@@ -11,7 +11,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::watch::Receiver;
 use tokio::sync::{watch, Mutex};
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, timeout, interval};
 
 const RED: &str = "\x1b[31;1m";
 const GREEN: &str = "\x1b[32;1m";
@@ -79,9 +79,9 @@ async fn request_ping(host: &str) -> Result<u128, Box<dyn Error + Send + Sync>> 
 async fn request_download(
     host: &str,
     rx: &mut Receiver<&str>,
-    counter: Arc<Mutex<u128>>,
+    counter: Arc<Mutex<u64>>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-    let data_size: u128 = 15 * 1024 * 1024 * 1024;
+    let data_size: u64 = 15 * 1024 * 1024 * 1024;
     let command = format!("DOWNLOAD {}\n", data_size);
 
     let mut stream = TcpStream::connect(&host).await?;
@@ -103,9 +103,9 @@ async fn request_download(
 async fn request_upload(
     host: &str,
     rx: &mut Receiver<&str>,
-    counter: Arc<Mutex<u128>>,
+    counter: Arc<Mutex<u64>>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-    let data_size: u128 = 15 * 1024 * 1024 * 1024;
+    let data_size: u64 = 15 * 1024 * 1024 * 1024;
     let data = "23456789ABCDEFGHIJKLMNOPQRSTUVWX".repeat(512);
     let data = data.as_bytes();
 
@@ -155,7 +155,7 @@ fn justify_name(name: &String) -> String {
     justified_name
 }
 
-fn format_size(size: &u128) -> String {
+fn format_size(size: &u64) -> String {
     let num = size * 16384 * 8;
     let mut num = num as f64;
     for unit in ["", "K", "M"] {
@@ -180,7 +180,7 @@ struct SpeedtestClient {
     name: String,
     host: String,
     thread: u8,
-    result: (u128, u128, u128),
+    result: (u64, u64, u128),
 }
 
 impl SpeedtestClient {
@@ -212,8 +212,8 @@ impl SpeedtestClient {
 
     async fn download(&mut self) -> Result<bool, Box<dyn Error>> {
         let (tx, rx) = watch::channel("ready");
-        let counter: Arc<Mutex<u128>> = Arc::new(Mutex::new(0));
-        let mut all_counter: u128 = 0;
+        let counter: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+        let mut last: u64 = 0;
 
         for _i in 0..self.thread {
             let host = self.host.clone();
@@ -222,26 +222,18 @@ impl SpeedtestClient {
             tokio::spawn(async move { request_download(&host, &mut r, c).await });
         }
 
-        let now = Instant::now();
-        let mut time_used = now.elapsed().as_micros();
+        let mut time_interval = interval(Duration::from_millis(500));
         tx.send("downlaod")?;
+        time_interval.tick().await;
 
-        while time_used < 15_000_000 {
-            sleep(Duration::from_millis(500)).await;
-            let num = {
-                let mut num = counter.lock().await;
-                let n = *num;
-                *num = 0;
-                n
-            };
-            time_used = now.elapsed().as_micros();
-            all_counter += num;
-            self.result.1 = num << 1;
+        for _i in 0..30 {
+            time_interval.tick().await;
+            let num = {*(counter.lock().await)};
+            self.result.1 = (num - last) << 1;
+            last = num;
             self.show(false);
         }
         tx.send("stop")?;
-        self.result.1 = all_counter / (time_used / 1000_000);
-        self.show(false);
         sleep(Duration::from_millis(200)).await;
 
         Ok(true)
@@ -249,8 +241,8 @@ impl SpeedtestClient {
 
     async fn upload(&mut self) -> Result<bool, Box<dyn Error>> {
         let (tx, rx) = watch::channel("ready");
-        let counter: Arc<Mutex<u128>> = Arc::new(Mutex::new(0));
-        let mut all_counter: u128 = 0;
+        let counter: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+        let mut last: u64 = 0;
 
         for _i in 0..self.thread {
             let host = self.host.clone();
@@ -259,26 +251,18 @@ impl SpeedtestClient {
             tokio::spawn(async move { request_upload(&host, &mut r, c).await });
         }
 
-        let now = Instant::now();
-        let mut time_used = now.elapsed().as_micros();
+        let mut time_interval = interval(Duration::from_millis(500));
         tx.send("upload")?;
+        time_interval.tick().await;
 
-        while time_used < 15_000_000 {
-            sleep(Duration::from_millis(500)).await;
-            let num = {
-                let mut num = counter.lock().await;
-                let n = *num;
-                *num = 0;
-                n
-            };
-            time_used = now.elapsed().as_micros();
-            all_counter += num;
-            self.result.0 = num << 1;
+        for _i in 0..30 {
+            time_interval.tick().await;
+            let num = {*(counter.lock().await)};
+            self.result.0 = (num - last) << 1;
+            last = num;
             self.show(false);
         }
         tx.send("stop")?;
-        self.result.0 = all_counter / (time_used / 1000_000);
-        self.show(false);
         sleep(Duration::from_millis(200)).await;
 
         Ok(true)
@@ -366,7 +350,7 @@ async fn main() {
     let version = env!("CARGO_PKG_VERSION");
     let line = "-".repeat(80);
 
-    println!("Binet v{}", version);
+    println!("Bench.im v{}", version);
     println!("{line}");
 
     let locations = get_locations().await.unwrap();
