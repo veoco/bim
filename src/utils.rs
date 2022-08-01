@@ -1,0 +1,89 @@
+const WIDTH: [(u32, u8); 38] = [
+    (126, 1),
+    (159, 0),
+    (687, 1),
+    (710, 0),
+    (711, 1),
+    (727, 0),
+    (733, 1),
+    (879, 0),
+    (1154, 1),
+    (1161, 0),
+    (4347, 1),
+    (4447, 2),
+    (7467, 1),
+    (7521, 0),
+    (8369, 1),
+    (8426, 0),
+    (9000, 1),
+    (9002, 2),
+    (11021, 1),
+    (12350, 2),
+    (12351, 1),
+    (12438, 2),
+    (12442, 0),
+    (19893, 2),
+    (19967, 1),
+    (55203, 2),
+    (63743, 1),
+    (64106, 2),
+    (65039, 1),
+    (65059, 0),
+    (65131, 2),
+    (65279, 1),
+    (65376, 2),
+    (65500, 1),
+    (65510, 2),
+    (120831, 1),
+    (262141, 2),
+    (1114109, 1),
+];
+
+pub const RED: &str = "\x1b[31;1m";
+pub const GREEN: &str = "\x1b[32;1m";
+pub const BLUE: &str = "\x1b[94;1m";
+pub const BOLD: &str = "\x1b[1m";
+pub const ENDC: &str = "\x1b[0m";
+
+pub fn get_width(o: u32) -> u8 {
+    if o == 0xE || o == 0xF {
+        return 0;
+    }
+    for (num, wid) in WIDTH {
+        if o <= num {
+            return wid;
+        }
+    }
+    1
+}
+
+pub fn justify_name(name: &String) -> String {
+    let mut name_width = 0;
+    let mut justified_name = String::new();
+
+    for c in name.chars() {
+        let w = get_width(c as u32);
+        if name_width + w < 46 {
+            name_width += w;
+            justified_name.push(c);
+        }
+    }
+
+    if name_width < 46 {
+        let space_count = 46 - name_width;
+        justified_name += " ".repeat(space_count as usize).as_str();
+    }
+    justified_name
+}
+
+pub fn format_size(size: &u64) -> String {
+    let num = size * 16384 * 8;
+    let mut num = num as f64;
+    for unit in ["", "K", "M"] {
+        if num < 1000.0 {
+            return format!("{:.1} {}bps", num, unit);
+        }
+        num /= 1000.0;
+    }
+    return format!("{:.1} Gbps", num);
+}
