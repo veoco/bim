@@ -76,8 +76,8 @@ pub fn justify_name(name: &String) -> String {
     justified_name
 }
 
-pub fn format_size(size: &u64) -> String {
-    let num = size * 16384 * 8;
+pub fn format_size(size: &u128) -> String {
+    let num = size * 8;
     let mut num = num as f64;
     for unit in ["", "K", "M"] {
         if num < 1000.0 {

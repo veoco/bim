@@ -21,19 +21,17 @@ struct Args {
 }
 
 
-async fn get_locations() -> Result<Option<Vec<[String; 6]>>, Box<dyn Error>> {
+async fn get_locations() -> Result<Option<Vec<[String; 4]>>, Box<dyn Error>> {
     let url = "https://www.speedtest.net/api/js/servers?engine=js";
     let closest_servers = reqwest::get(url).await?.json::<Value>().await?;
-
     let s = closest_servers.get(0).unwrap().clone();
-    let host = s.get("host").unwrap().as_str().unwrap().to_string();
+
+    let url = s.get("url").unwrap().as_str().unwrap().to_string();
     let name = s.get("name").unwrap().as_str().unwrap().to_string();
-    let country = s.get("country").unwrap().as_str().unwrap().to_string();
     let cc = s.get("cc").unwrap().as_str().unwrap().to_string();
     let sponsor = s.get("sponsor").unwrap().as_str().unwrap().to_string();
-    let sid = s.get("id").unwrap().as_str().unwrap().to_string();
 
-    let servers = vec![[host, name, country, cc, sponsor, sid]];
+    let servers = vec![[url, name, cc, sponsor]];
     Ok(Some(servers))
 }
 
@@ -64,17 +62,18 @@ async fn main() {
     let start = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     for location in locations.unwrap_or(vec![]).iter() {
-        let name = format!("[{}] {} - {}", location[3], location[4], location[1]);
+        let name = format!("[{}] {} - {}", location[2], location[3], location[1]);
         let name = justify_name(&name);
-        let host: Vec<&str> = location[0].split("//").collect();
-        let pos = if host.len() > 1 { host.len() - 1 } else { 0 };
-        let host = host[pos].to_string();
+        let url = location[0].clone();
+
+        let upload_data = "1234567".repeat(128);
 
         let mut client = SpeedtestClient {
             name: name,
-            host: host,
+            url: url,
             thread: args.thread,
             result: (0, 0, 0),
+            upload_data: upload_data,
         };
         let res = client.run().await;
         if !res {
