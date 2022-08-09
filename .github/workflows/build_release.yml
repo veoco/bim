@@ -41,7 +41,7 @@ jobs:
       - name: Build ${{ matrix.target }}
         timeout-minutes: 120
         env:
-          - OUPUT_FILENAME: bim-${{ github.ref_name }}-${{ matrix.target }}
+          OUPUT_FILENAME: bim-${{ github.ref_name }}-${{ matrix.target }}
         run: |
           cross build --target ${{ matrix.target }} -r
           mkdir -p ./build/release
