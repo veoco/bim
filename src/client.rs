@@ -225,7 +225,7 @@ async fn request_download(
     let _r = barrier.wait().await;
     stream.write_all(command.as_bytes()).await?;
 
-    while *stop_rx.borrow() != "stop"{
+    while *stop_rx.borrow() != "stop" {
         stream.readable().await?;
         match stream.try_read(&mut buff) {
             Ok(n) => {
@@ -261,7 +261,7 @@ async fn request_upload(
     let _r = barrier.wait().await;
     stream.write_all(command.as_bytes()).await?;
 
-    while *stop_rx.borrow() != "stop"{
+    while *stop_rx.borrow() != "stop" {
         stream.writable().await?;
         match stream.try_write(data) {
             Ok(n) => {

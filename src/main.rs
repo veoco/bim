@@ -29,14 +29,27 @@ async fn get_servers(args: &Args) -> Result<Option<Vec<[String; 4]>>, Box<dyn Er
     let server = &args.server;
     let servers: Vec<Value>;
     if args.server_list {
-        let url = format!(
-            "https://bench.im/api/server_list/?pk={}",
-            server
-        );
-        servers = reqwest::get(url).await?.json::<Value>().await?.get("servers").unwrap().as_array().unwrap().clone();
+        let url = format!("https://bench.im/api/server_list/?pk={}", server);
+        servers = reqwest::get(url)
+            .await?
+            .json::<Value>()
+            .await?
+            .get("servers")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .clone();
     } else {
         let url = format!("https://bench.im/api/search/?type=server&query={}", server);
-        servers = reqwest::get(url).await?.json::<Value>().await?.get("results").unwrap().as_array().unwrap().clone();
+        servers = reqwest::get(url)
+            .await?
+            .json::<Value>()
+            .await?
+            .get("results")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .clone();
     }
 
     let mut results = vec![];
