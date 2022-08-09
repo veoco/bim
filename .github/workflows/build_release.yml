@@ -12,19 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: full
-    strategy:
-      matrix:
-        target:
-          - i686-unknown-linux-musl
-          - x86_64-unknown-linux-musl
-          - arm-unknown-linux-musleabihf
-          - armv7-unknown-linux-musleabihf
-          - aarch64-unknown-linux-musl
-          - mips-unknown-linux-musl
-          - mips64-unknown-linux-muslabi64
-          - mipsel-unknown-linux-musl
-          - mips64el-unknown-linux-muslabi64
-
     steps:
       - uses: actions/checkout@v2
 
@@ -44,81 +31,9 @@ jobs:
         timeout-minutes: 120
         run: |
           sudo apt install -y libssl-dev
-          cross build --target ${{ matrix.target }} --release
-          mkdir -p build/release; mv target/${{ matrix.target }}/release/bim build/release/bim-${{ github.ref_name }}-${{ matrix.target }}
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3.1.0
-        with:
-          path: build/release/*
-
-  build-unix:
-    runs-on: ${{ matrix.os }}
-    env:
-      BUILD_EXTRA_FEATURES: "armv8 neon"
-      RUST_BACKTRACE: full
-    strategy:
-      matrix:
-        os: [macos-latest]
-        target:
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Install GNU tar
-        if: runner.os == 'macOS'
-        run: |
-          brew install gnu-tar
-          # echo "::add-path::/usr/local/opt/gnu-tar/libexec/gnubin"
-          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          target: ${{ matrix.target }}
-          toolchain: nightly
-          default: true
-          override: true
-
-      # https://github.com/actions/virtual-environments/issues/2557#issuecomment-769611326
-      - if: ${{ matrix.target }} == 'aarch64-apple-darwin'
-        run: |
-          sudo xcode-select -s /Applications/Xcode_12.4.app &&
-          sudo rm -Rf /Library/Developer/CommandLineTools/SDKs/*
-
-      - name: Build release
-        shell: bash
-        run: |
-          cross build --target ${{ matrix.target }} --release
-          mkdir -p build/release; mv target/${{ matrix.target }}/release/bim build/release/bim-${{ github.ref_name }}-${{ matrix.target }}
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3.1.0
-        with:
-          path: build/release/*
-
-  build-windows:
-    runs-on: windows-latest
-    env:
-      RUSTFLAGS: "-C target-feature=+crt-static"
-      RUST_BACKTRACE: full
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          default: true
-          override: true
-
-      - name: Build release
-        run: |
-          cross build --target ${{ matrix.target }} --release
-          mkdir -p build/release; mv target/${{ matrix.target }}/release/bim build/release/bim-${{ github.ref_name }}-${{ matrix.target }}
+          cross build --target x86_64-unknown-linux-musl --release
+          mv target/x86_64-unknown-linux-musl/release/bim build/release/bim-${{ github.ref_name }}-x86_64
+          mkdir -p build/release
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3.1.0
