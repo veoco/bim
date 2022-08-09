@@ -43,6 +43,7 @@ jobs:
       - name: Build ${{ matrix.target }}
         timeout-minutes: 120
         run: |
+          apt install libssl-dev
           cross build --target ${{ matrix.target }} --release
           mkdir -p build/release; mv target/${{ matrix.target }}/release/bim build/release/bim-${{ github.ref_name }}-${{ matrix.target }}
 
