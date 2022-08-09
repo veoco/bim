@@ -1,8 +1,5 @@
 name: Build Releases
-on:
-  push:
-    tags:
-      - v*
+on: push
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,6 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: full
+    
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+
     steps:
       - uses: actions/checkout@v2
 
@@ -24,14 +27,11 @@ jobs:
           default: true
           override: true
 
+      - name: Install cross
+        run: cargo install cross
+
       - name: Build ${{ matrix.target }}
         timeout-minutes: 120
         run: |
-          cargo build -r
-          mkdir -p build/release
-          mv /home/runner/work/bim/bim build/release/bim-${{ github.ref_name }}-x86_64
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3.1.0
-        with:
-          path: build/release/*
+          cross build --target ${{ matrix.target }} -r
+          ls -lR
