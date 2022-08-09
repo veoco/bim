@@ -15,24 +15,40 @@ use utils::{justify_name, BOLD, ENDC};
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
+    #[clap(value_parser)]
+    server: String,
+    /// Server list search
+    #[clap(short, long, action)]
+    server_list: bool,
     /// Number of thread
     #[clap(short, long, value_parser, default_value_t = 4)]
     thread: u8,
 }
 
+async fn get_servers(args: &Args) -> Result<Option<Vec<[String; 4]>>, Box<dyn Error>> {
+    let server = &args.server;
+    let servers: Vec<Value>;
+    if args.server_list {
+        let url = format!(
+            "https://bench.im/api/server_list/?pk={}",
+            server
+        );
+        servers = reqwest::get(url).await?.json::<Value>().await?.get("servers").unwrap().as_array().unwrap().clone();
+    } else {
+        let url = format!("https://bench.im/api/search/?type=server&query={}", server);
+        servers = reqwest::get(url).await?.json::<Value>().await?.get("results").unwrap().as_array().unwrap().clone();
+    }
 
-async fn get_locations() -> Result<Option<Vec<[String; 4]>>, Box<dyn Error>> {
-    let url = "https://www.speedtest.net/api/js/servers?engine=js";
-    let closest_servers = reqwest::get(url).await?.json::<Value>().await?;
-    let s = closest_servers.get(0).unwrap().clone();
-
-    let url = s.get("url").unwrap().as_str().unwrap().to_string();
-    let name = s.get("name").unwrap().as_str().unwrap().to_string();
-    let cc = s.get("cc").unwrap().as_str().unwrap().to_string();
-    let sponsor = s.get("sponsor").unwrap().as_str().unwrap().to_string();
-
-    let servers = vec![[url, name, cc, sponsor]];
-    Ok(Some(servers))
+    let mut results = vec![];
+    for s in servers {
+        let detial = s.get("detail").unwrap();
+        let host = detial.get("host").unwrap().as_str().unwrap().to_string();
+        let name = detial.get("name").unwrap().as_str().unwrap().to_string();
+        let cc = detial.get("cc").unwrap().as_str().unwrap().to_string();
+        let sponsor = detial.get("sponsor").unwrap().as_str().unwrap().to_string();
+        results.push([host, name, cc, sponsor])
+    }
+    Ok(Some(results))
 }
 
 #[tokio::main]
@@ -44,7 +60,7 @@ async fn main() {
     println!("Bench.im v{}", version);
     println!("{line}");
 
-    let locations = get_locations().await.unwrap();
+    let locations = get_servers(&args).await.unwrap();
 
     println!(
         "{BOLD}{:<46}{:>12}{:>12}{:>10}{ENDC}",
@@ -64,13 +80,13 @@ async fn main() {
     for location in locations.unwrap_or(vec![]).iter() {
         let name = format!("[{}] {} - {}", location[2], location[3], location[1]);
         let name = justify_name(&name);
-        let url = location[0].clone();
+        let host = location[0].clone();
 
         let upload_data = "1234567".repeat(128);
 
         let mut client = SpeedtestClient {
             name: name,
-            url: url,
+            host: host,
             thread: args.thread,
             result: (0, 0, 0),
             upload_data: upload_data,
