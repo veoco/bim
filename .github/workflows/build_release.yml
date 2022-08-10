@@ -80,10 +80,9 @@ jobs:
         run: |
           cargo build -r
           mkdir -p ./build/release
-          ls -r
-          cp ./target/release/bim.exe ./build/release/$OUPUT_FILENAME
+          cp ./target/release/bim.exe ./build/release/$env:OUPUT_FILENAME
           cd ./build/release
-          Get-FileHash $OUPUT_FILENAME | Format-List > $OUPUT_FILENAME.sha256
+          Get-FileHash $env:OUPUT_FILENAME | Format-List > $env:OUPUT_FILENAME.sha256
 
       - name: Upload Github Assets
         uses: softprops/action-gh-release@v1
