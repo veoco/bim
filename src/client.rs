@@ -258,6 +258,7 @@ async fn request_upload(
     let command = format!("UPLOAD {} 0\n", data_size);
 
     let mut stream = TcpStream::connect(&host).await?;
+    stream.set_nodelay(true)?;
     let _r = barrier.wait().await;
     stream.write_all(command.as_bytes()).await?;
 
