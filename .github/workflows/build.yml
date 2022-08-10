@@ -26,6 +26,11 @@ jobs:
         run: |
           cargo build -r
           ./target/release/bim 595
+      
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bim-linux
+          path: target/release/bim
   
   build-windows:
     runs-on: windows-latest
@@ -48,6 +53,11 @@ jobs:
         run: |
           cargo build -r
           ./target/release/bim.exe 595
+      
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bim-windows
+          path: target/release/bim.exe
   
   build-macos:
     runs-on: macos-latest
@@ -70,3 +80,8 @@ jobs:
         run: |
           cargo build -r
           ./target/release/bim 595
+      
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bim-macos
+          path: target/release/bim
