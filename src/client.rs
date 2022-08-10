@@ -213,7 +213,7 @@ async fn request_download(
     counter_tx: Sender<u128>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let mut count = 0;
-    let data_size: u64 = 15_000_000_000;
+    let data_size: u64 = 4_000_000_000;
     let command = format!("DOWNLOAD {}\n", data_size);
     let mut buff: [u8; 16384] = [0; 16384];
 
@@ -248,7 +248,7 @@ async fn request_upload(
     counter_tx: Sender<u128>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let mut count = 0;
-    let data_size: u64 = 15_000_000_000;
+    let data_size: u64 = 4_000_000_000;
     let data = "23456789ABCDEFGHIJKLMNOPQRSTUVWX".repeat(1_000_000);
     let data = data.as_bytes();
 
