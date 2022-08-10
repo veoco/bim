@@ -8,6 +8,7 @@ use tokio;
 
 mod client;
 mod utils;
+mod windows;
 use client::SpeedtestClient;
 use utils::{justify_name, BOLD, ENDC};
 
@@ -70,6 +71,7 @@ async fn main() {
     let version = env!("CARGO_PKG_VERSION");
     let line = "-".repeat(80);
 
+    let _enable = windows::enable_ansi_support();
     println!("Bench.im v{}", version);
     println!("{line}");
 
