@@ -65,7 +65,6 @@ impl SpeedtestNetClient {
 
         let mut last = 0;
         let mut start = 0;
-        let mut now = Instant::now();
         let mut time_interval = interval(Duration::from_millis(1000));
         let _r = barrier.wait().await;
         time_interval.tick().await;
@@ -79,13 +78,12 @@ impl SpeedtestNetClient {
                 }
                 count
             };
-            if i > 3 {
-                self.result.1 = (num - start) * 1000 / now.elapsed().as_millis();
+            if i > 2 {
+                self.result.1 = (num - start) / (i - 2);
                 self.show();
             } else {
-                if i == 3 {
+                if i == 2 {
                     start = num;
-                    now = Instant::now();
                 }
                 self.result.1 = num - last;
                 self.show();
@@ -114,7 +112,6 @@ impl SpeedtestNetClient {
 
         let mut last = 0;
         let mut start = 0;
-        let mut now = Instant::now();
         let mut time_interval = interval(Duration::from_millis(1000));
         let _r = barrier.wait().await;
         time_interval.tick().await;
@@ -128,13 +125,12 @@ impl SpeedtestNetClient {
                 }
                 count
             };
-            if i > 3 {
-                self.result.0 = (num - start) * 1000 / now.elapsed().as_millis();
+            if i > 2 {
+                self.result.0 = (num - start) / (i - 2);
                 self.show();
             } else {
-                if i == 3 {
+                if i == 2 {
                     start = num;
-                    now = Instant::now();
                 }
                 self.result.0 = num - last;
                 self.show();
