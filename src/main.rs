@@ -9,7 +9,7 @@ use tokio;
 mod client;
 mod utils;
 mod windows;
-use client::SpeedtestClient;
+use client::SpeedtestNetClient;
 use utils::{justify_name, BOLD, ENDC};
 
 /// Simple program to test network
@@ -99,7 +99,7 @@ async fn main() {
 
         let upload_data = "1234567".repeat(128);
 
-        let mut client = SpeedtestClient {
+        let mut client = SpeedtestNetClient {
             name: name,
             host: host,
             thread: args.thread,

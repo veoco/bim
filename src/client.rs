@@ -13,7 +13,7 @@ use tokio::time::{interval, sleep, timeout};
 
 use crate::utils::{format_size, BLUE, BOLD, ENDC, GREEN, RED};
 
-pub struct SpeedtestClient {
+pub struct SpeedtestNetClient {
     pub name: String,
     pub host: String,
     pub thread: u8,
@@ -21,7 +21,7 @@ pub struct SpeedtestClient {
     pub upload_data: String,
 }
 
-impl SpeedtestClient {
+impl SpeedtestNetClient {
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut count = 5;
         let mut ping_min = 10_000_000;
