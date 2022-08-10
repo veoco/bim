@@ -218,6 +218,7 @@ async fn request_download(
     let mut buff: [u8; 16384] = [0; 16384];
 
     let mut stream = TcpStream::connect(&host).await?;
+    stream.set_nodelay(true)?;
     let _r = barrier.wait().await;
     stream.write_all(command.as_bytes()).await?;
 
