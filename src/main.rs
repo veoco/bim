@@ -6,10 +6,10 @@ use clap::Parser;
 use serde_json::Value;
 use tokio;
 
-mod client;
+mod speedtest_net;
 mod utils;
 mod windows;
-use client::SpeedtestNetClient;
+use speedtest_net::SpeedtestNetClient;
 use utils::{justify_name, BOLD, ENDC};
 
 /// Simple program to test network
