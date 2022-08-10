@@ -80,7 +80,8 @@ jobs:
         run: |
           cargo build -r
           mkdir -p ./build/release
-          cp ./target/release/bim ./build/release/$OUPUT_FILENAME
+          ls -r
+          cp ./target/release/bim.exe ./build/release/$OUPUT_FILENAME
           cd ./build/release
           Get-FileHash $OUPUT_FILENAME | Format-List > $OUPUT_FILENAME.sha256
 
