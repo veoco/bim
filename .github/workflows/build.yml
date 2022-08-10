@@ -1,0 +1,72 @@
+name: Build
+on: push
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: full
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          default: true
+          override: true
+
+      - name: Build and test
+        timeout-minutes: 120
+        run: |
+          cargo build -r
+          ./target/release/bim 595
+  
+  build-windows:
+    runs-on: windows-latest
+    env:
+      RUST_BACKTRACE: full
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          default: true
+          override: true
+
+      - name: Build and test
+        timeout-minutes: 120
+        run: |
+          cargo build -r
+          ./target/release/bim.exe 595
+  
+  build-macos:
+    runs-on: macos-latest
+    env:
+      RUST_BACKTRACE: full
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          default: true
+          override: true
+
+      - name: Build and test
+        timeout-minutes: 120
+        run: |
+          cargo build -r
+          ./target/release/bim 595
