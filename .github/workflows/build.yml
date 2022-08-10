@@ -22,10 +22,10 @@ jobs:
           override: true
 
       - name: Build and test
-        timeout-minutes: 120
+        timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim 595
+          ./target/debug/bim 177
       
       - uses: actions/upload-artifact@v3
         with:
@@ -49,10 +49,10 @@ jobs:
           override: true
 
       - name: Build and test
-        timeout-minutes: 120
+        timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim.exe 595
+          ./target/debug/bim.exe 177
       
       - uses: actions/upload-artifact@v3
         with:
@@ -76,10 +76,10 @@ jobs:
           override: true
 
       - name: Build and test
-        timeout-minutes: 120
+        timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim 595
+          ./target/debug/bim 177
       
       - uses: actions/upload-artifact@v3
         with:
