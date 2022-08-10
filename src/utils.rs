@@ -77,13 +77,5 @@ pub fn justify_name(name: &String) -> String {
 }
 
 pub fn format_size(size: &u128) -> String {
-    let num = size * 8;
-    let mut num = num as f64;
-    for unit in ["", "K", "M"] {
-        if num < 1000.0 {
-            return format!("{:.1} {}bps", num, unit);
-        }
-        num /= 1000.0;
-    }
-    return format!("{:.1} Gbps", num);
+    return format!("{:.1} Mbps", (*size as f64) / 125_000.0);
 }
