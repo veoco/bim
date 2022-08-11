@@ -1,9 +1,11 @@
 use std::error::Error;
 use std::io::prelude::*;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tokio::io::AsyncWriteExt;
+use bytes::{BufMut, BytesMut};
+use reqwest::{Body, Url};
 use tokio::net::TcpStream;
 use tokio::sync::{
     watch::{self, Receiver, Sender},
@@ -13,20 +15,24 @@ use tokio::time::{interval, sleep, timeout};
 
 use crate::utils::{format_size, BLUE, BOLD, ENDC, GREEN, RED};
 
-pub struct SpeedtestNetClient {
+pub struct LibreSpeedOrgClient {
     pub name: String,
-    pub host: String,
+    pub download_url: String,
+    pub upload_url: String,
     pub thread: u8,
     pub result: (u128, u128, u128),
 }
 
-impl SpeedtestNetClient {
+impl LibreSpeedOrgClient {
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut count = 5;
         let mut ping_min = 10_000_000;
 
+        let url = Url::parse(&self.download_url)?;
+        let addr = url.socket_addrs(|| None)?[0];
+
         while count != 0 {
-            let task = request_ping(&self.host);
+            let task = request_ping(addr);
             let ping_ms = timeout(Duration::from_micros(10_000_000), task)
                 .await
                 .unwrap_or(Ok(10_000_000))
@@ -53,13 +59,16 @@ impl SpeedtestNetClient {
         let (stop_tx, stop_rx) = watch::channel("run");
         let mut counters: Vec<Receiver<u128>> = vec![];
 
+        let mut url = Url::parse(&self.download_url)?;
+        url.set_query(Some("ckSize=1024"));
+
         for _i in 0..self.thread {
-            let host = self.host.clone();
+            let url = url.clone();
             let b = barrier.clone();
             let mut r = stop_rx.clone();
             let (c_tx, c_rx) = watch::channel(0);
             counters.push(c_rx);
-            tokio::spawn(async move { request_download(&host, b, &mut r, c_tx).await });
+            tokio::spawn(async move { request_download(url, b, &mut r, c_tx).await });
         }
 
         let mut last = 0;
@@ -78,8 +87,11 @@ impl SpeedtestNetClient {
                 count
             };
             if i > 2 {
-                self.result.1 = (num - start) / (i - 2);
-                self.show();
+                let increment = num - start;
+                if increment > 0 {
+                    self.result.1 = increment / (i - 2);
+                    self.show();
+                }
             } else {
                 if i == 2 {
                     start = num;
@@ -97,16 +109,16 @@ impl SpeedtestNetClient {
 
     async fn upload(&mut self) -> Result<bool, Box<dyn Error>> {
         let barrier = Arc::new(Barrier::new((self.thread + 1) as usize));
-        let (stop_tx, stop_rx) = watch::channel("run");
         let mut counters: Vec<Receiver<u128>> = vec![];
 
+        let url = Url::parse(&self.upload_url)?;
+
         for _i in 0..self.thread {
-            let host = self.host.clone();
+            let url = url.clone();
             let b = barrier.clone();
-            let mut r = stop_rx.clone();
             let (c_tx, c_rx) = watch::channel(0);
             counters.push(c_rx);
-            tokio::spawn(async move { request_upload(&host, b, &mut r, c_tx).await });
+            tokio::spawn(async move { request_upload(url, b, c_tx).await });
         }
 
         let mut last = 0;
@@ -125,8 +137,11 @@ impl SpeedtestNetClient {
                 count
             };
             if i > 2 {
-                self.result.0 = (num - start) / (i - 2);
-                self.show();
+                let increment = num - start;
+                if increment > 0 {
+                    self.result.0 = increment / (i - 2);
+                    self.show();
+                }
             } else {
                 if i == 2 {
                     start = num;
@@ -136,7 +151,6 @@ impl SpeedtestNetClient {
                 last = num;
             }
         }
-        stop_tx.send("stop")?;
         sleep(Duration::from_secs(1)).await;
 
         Ok(true)
@@ -198,81 +212,73 @@ impl SpeedtestNetClient {
     }
 }
 
-async fn request_ping(host: &str) -> Result<u128, Box<dyn Error + Send + Sync>> {
+async fn request_ping(addr: SocketAddr) -> Result<u128, Box<dyn Error + Send + Sync>> {
     let now = Instant::now();
-    let _stream = TcpStream::connect(&host).await?;
+    let _stream = TcpStream::connect(addr).await?;
     let used = now.elapsed().as_micros();
     Ok(used)
 }
 
 async fn request_download(
-    host: &str,
+    url: Url,
     barrier: Arc<Barrier>,
     stop_rx: &mut Receiver<&str>,
     counter_tx: Sender<u128>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let mut count = 0;
-    let data_size: u64 = 15_000_000_000;
-    let command = format!("DOWNLOAD {}\n", data_size);
-    let mut buff: [u8; 16384] = [0; 16384];
 
-    let mut stream = TcpStream::connect(&host).await?;
-    stream.set_nodelay(true)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
+
     let _r = barrier.wait().await;
-    stream.write_all(command.as_bytes()).await?;
-
+    let mut stream = client.get(url.clone()).send().await?;
     while *stop_rx.borrow() != "stop" {
-        stream.readable().await?;
-        match stream.try_read(&mut buff) {
-            Ok(n) => {
-                count += n as u128;
-                let _r = counter_tx.send(count);
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                continue;
-            }
-            Err(e) => {
-                return Err(e.into());
+        while let Some(chunk) = stream.chunk().await? {
+            count += chunk.len() as u128;
+            let _r = counter_tx.send(count);
+            if *stop_rx.borrow() == "stop" {
+                break;
             }
         }
+        stream = client.get(url.clone()).send().await?;
     }
 
     Ok(true)
 }
 
 async fn request_upload(
-    host: &str,
+    url: Url,
     barrier: Arc<Barrier>,
-    stop_rx: &mut Receiver<&str>,
     counter_tx: Sender<u128>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let mut count = 0;
-    let data_size: u64 = 15_000_000_000;
-    let data = "23456789ABCDEFGHIJKLMNOPQRSTUVWX".repeat(1_000_000);
-    let data = data.as_bytes();
+    let mut data = BytesMut::new();
+    data.put(
+        "0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz-="
+            .repeat(512)
+            .as_bytes(),
+    );
 
-    let command = format!("UPLOAD {} 0\n", data_size);
-
-    let mut stream = TcpStream::connect(&host).await?;
-    stream.set_nodelay(true)?;
-    let _r = barrier.wait().await;
-    stream.write_all(command.as_bytes()).await?;
-
-    while *stop_rx.borrow() != "stop" {
-        stream.writable().await?;
-        match stream.try_write(data) {
-            Ok(n) => {
-                count += n as u128;
-                let _r = counter_tx.send(count);
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                continue;
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
+    let s = async_stream::stream! {
+        loop {
+            let chunk: Result<BytesMut, std::io::Error> = Ok(data.clone());
+            count += 32768;
+            let _r = counter_tx.send(count);
+            yield chunk;
         }
-    }
+    };
+
+    let body = Body::wrap_stream(s);
+    let client = reqwest::Client::builder().build()?;
+
+    let _r = barrier.wait().await;
+    let _res = client
+        .post(url.clone())
+        .body(body)
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await?;
 
     Ok(true)
 }

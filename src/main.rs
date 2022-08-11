@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -6,9 +7,11 @@ use clap::Parser;
 use serde_json::Value;
 use tokio;
 
+mod librespeed_org;
 mod speedtest_net;
 mod utils;
 mod windows;
+use librespeed_org::LibreSpeedOrgClient;
 use speedtest_net::SpeedtestNetClient;
 use utils::{justify_name, BOLD, ENDC};
 
@@ -26,7 +29,7 @@ struct Args {
     thread: u8,
 }
 
-async fn get_servers(args: &Args) -> Result<Option<Vec<[String; 4]>>, Box<dyn Error>> {
+async fn get_servers(args: &Args) -> Result<Option<Vec<HashMap<String, String>>>, Box<dyn Error>> {
     let server = &args.server;
     let servers: Vec<Value>;
     if args.server_list {
@@ -55,12 +58,51 @@ async fn get_servers(args: &Args) -> Result<Option<Vec<[String; 4]>>, Box<dyn Er
 
     let mut results = vec![];
     for s in servers {
-        let detial = s.get("detail").unwrap();
-        let host = detial.get("host").unwrap().as_str().unwrap().to_string();
-        let name = detial.get("name").unwrap().as_str().unwrap().to_string();
-        let cc = detial.get("cc").unwrap().as_str().unwrap().to_string();
-        let sponsor = detial.get("sponsor").unwrap().as_str().unwrap().to_string();
-        results.push([host, name, cc, sponsor])
+        let provider = s.get("provider").unwrap().as_str().unwrap().to_string();
+        let detail = s.get("detail").unwrap();
+        let mut r = HashMap::new();
+        r.insert(String::from("provider"), provider.clone());
+
+        if provider == "Ookla" {
+            let host = detail.get("host").unwrap().as_str().unwrap().to_string();
+            let name = detail.get("name").unwrap().as_str().unwrap().to_string();
+            let cc = detail.get("cc").unwrap().as_str().unwrap().to_string();
+            let sponsor = detail.get("sponsor").unwrap().as_str().unwrap().to_string();
+
+            let name = format!("[{}] {} - {}", cc, sponsor, name);
+            let name = justify_name(&name);
+
+            r.insert(String::from("name"), name);
+            r.insert(String::from("host"), host);
+        } else if provider == "LibreSpeed" {
+            let mut server = detail.get("server").unwrap().as_str().unwrap().to_string();
+            let name = detail.get("name").unwrap().as_str().unwrap().to_string();
+            let dl_url = detail.get("dlURL").unwrap().as_str().unwrap().to_string();
+            let ul_url = detail.get("ulURL").unwrap().as_str().unwrap().to_string();
+            let sponsor_name = detail
+                .get("sponsorName")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string();
+
+            let name = format!("{} - {}", sponsor_name, name);
+            let name = justify_name(&name);
+            if server.starts_with("//") {
+                server = String::from("https:") + &server;
+            }
+            if !server.ends_with("/") {
+                server = server + &String::from("/");
+            }
+            let download_url = server.clone() + &dl_url;
+            let upload_url = server.clone() + &ul_url;
+
+            r.insert(String::from("name"), name);
+            r.insert(String::from("download_url"), download_url);
+            r.insert(String::from("upload_url"), upload_url);
+        }
+
+        results.push(r);
     }
     Ok(Some(results))
 }
@@ -93,23 +135,38 @@ async fn main() {
     let start = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     for location in locations.unwrap_or(vec![]).iter() {
-        let name = format!("[{}] {} - {}", location[2], location[3], location[1]);
-        let name = justify_name(&name);
-        let host = location[0].clone();
+        let provider = location.get("provider").unwrap();
 
-        let upload_data = "1234567".repeat(128);
-
-        let mut client = SpeedtestNetClient {
-            name: name,
-            host: host,
-            thread: args.thread,
-            result: (0, 0, 0),
-            upload_data: upload_data,
-        };
-        let res = client.run().await;
-        if !res {
-            count_failed += 1;
+        if provider == "Ookla" {
+            let name = location.get("name").unwrap();
+            let host = location.get("host").unwrap();
+            let mut client = SpeedtestNetClient {
+                name: name.clone(),
+                host: host.clone(),
+                thread: args.thread,
+                result: (0, 0, 0),
+            };
+            let res = client.run().await;
+            if !res {
+                count_failed += 1;
+            }
+        } else if provider == "LibreSpeed" {
+            let name = location.get("name").unwrap();
+            let download_url = location.get("download_url").unwrap();
+            let upload_url = location.get("upload_url").unwrap();
+            let mut client = LibreSpeedOrgClient {
+                name: name.clone(),
+                download_url: download_url.clone(),
+                upload_url: upload_url.clone(),
+                thread: args.thread,
+                result: (0, 0, 0),
+            };
+            let res = client.run().await;
+            if !res {
+                count_failed += 1;
+            }
         }
+
         count_all += 1;
     }
 
