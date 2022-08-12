@@ -7,12 +7,12 @@ use clap::Parser;
 use serde_json::Value;
 use tokio;
 
-mod librespeed_org;
-mod speedtest_net;
+mod clients;
 mod utils;
 mod windows;
-use librespeed_org::LibreSpeedOrgClient;
-use speedtest_net::SpeedtestNetClient;
+mod requests;
+use clients::librespeed_org::LibreSpeedOrgClient;
+use clients::speedtest_net::SpeedtestNetClient;
 use utils::{justify_name, BOLD, ENDC};
 
 /// Simple program to test network
