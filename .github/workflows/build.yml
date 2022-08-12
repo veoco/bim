@@ -25,7 +25,7 @@ jobs:
         timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim 177
+          ./target/debug/bim -s 2
       
       - uses: actions/upload-artifact@v3
         with:
@@ -52,7 +52,7 @@ jobs:
         timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim.exe 177
+          ./target/debug/bim.exe -s 2
       
       - uses: actions/upload-artifact@v3
         with:
@@ -79,7 +79,7 @@ jobs:
         timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim 177
+          ./target/debug/bim -s 2
       
       - uses: actions/upload-artifact@v3
         with:
