@@ -9,7 +9,7 @@ use tokio::sync::{
 };
 use tokio::time::{interval, sleep, timeout};
 
-use crate::requests::{request_tcp_download, request_tcp_ping, request_tcp_upload};
+use crate::clients::requests::{request_tcp_download, request_tcp_ping, request_tcp_upload};
 use crate::utils::{format_size, BLUE, BOLD, ENDC, GREEN, RED};
 
 pub struct SpeedtestNetClient {

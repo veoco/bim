@@ -10,7 +10,7 @@ use tokio::sync::{
 };
 use tokio::time::{interval, sleep, timeout};
 
-use crate::requests::{request_http_download, request_http_upload, request_tcp_ping};
+use crate::clients::requests::{request_http_download, request_http_upload, request_tcp_ping};
 use crate::utils::{format_size, BLUE, BOLD, ENDC, GREEN, RED};
 
 pub struct LibreSpeedOrgClient {

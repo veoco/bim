@@ -10,7 +10,6 @@ use tokio;
 mod clients;
 mod utils;
 mod windows;
-mod requests;
 use clients::librespeed_org::LibreSpeedOrgClient;
 use clients::speedtest_net::SpeedtestNetClient;
 use utils::{justify_name, BOLD, ENDC};
