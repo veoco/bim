@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::io::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,8 +9,10 @@ use tokio::sync::{
 };
 use tokio::time::{interval, sleep, timeout};
 
-use crate::clients::requests::{request_http_download, request_http_upload, request_tcp_ping};
-use crate::utils::{format_size, BLUE, BOLD, ENDC, GREEN, RED};
+use crate::clients::{
+    requests::{request_http_download, request_http_upload, request_tcp_ping},
+    utils::Speedtest,
+};
 
 pub struct LibreSpeedOrgClient {
     pub name: String,
@@ -19,6 +20,24 @@ pub struct LibreSpeedOrgClient {
     pub upload_url: String,
     pub thread: u8,
     pub result: (u128, u128, u128),
+}
+
+impl Speedtest for LibreSpeedOrgClient {
+    fn get_ping(&self) -> u128 {
+        self.result.2
+    }
+
+    fn get_upload(&self) -> u128 {
+        self.result.0
+    }
+
+    fn get_download(&self) -> u128 {
+        self.result.1
+    }
+
+    fn get_name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl LibreSpeedOrgClient {
@@ -152,37 +171,6 @@ impl LibreSpeedOrgClient {
         sleep(Duration::from_secs(1)).await;
 
         Ok(true)
-    }
-
-    fn show(&self) {
-        let upload = if self.result.0 != 0 {
-            format_size(&self.result.0)
-        } else {
-            "-".to_string()
-        };
-        let download = if self.result.1 != 0 {
-            format_size(&self.result.1)
-        } else {
-            "-".to_string()
-        };
-        let ping = if self.result.2 != 0 {
-            let ping = if self.result.2 < 1000 {
-                format!("<1 ms")
-            } else {
-                format!("{:.1} ms", self.result.2 as f64 / 1000.0)
-            };
-            ping
-        } else {
-            "-".to_string()
-        };
-
-        let line = format!(
-            "\r{BOLD}{}{BLUE}{:>12}{ENDC}{RED}{:>12}{ENDC}{GREEN}{:>10}{ENDC}{ENDC}",
-            self.name, upload, download, ping
-        );
-        let mut stdout = std::io::stdout();
-        let _r = stdout.write_all(line.as_bytes());
-        let _r = stdout.flush();
     }
 
     pub async fn run(&mut self) -> bool {
