@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,12 +8,18 @@ use tokio::sync::{
     Barrier,
 };
 use tokio::time::{interval, sleep, timeout};
+use trust_dns_resolver::config::*;
+use trust_dns_resolver::TokioAsyncResolver;
 
-use crate::clients::{utils::Speedtest,requests::{request_tcp_download, request_tcp_ping, request_tcp_upload}};
+use crate::clients::{
+    requests::{request_tcp_download, request_tcp_ping, request_tcp_upload},
+    utils::Speedtest,
+};
 
 pub struct SpeedtestNetClient {
     pub name: String,
     pub host: String,
+    pub ipv6: bool,
     pub thread: u8,
     pub result: (u128, u128, u128),
 }
@@ -36,12 +43,43 @@ impl Speedtest for SpeedtestNetClient {
 }
 
 impl SpeedtestNetClient {
+    async fn resolve_ip(&self) -> Result<Option<SocketAddr>, Box<dyn Error>> {
+        let resolver =
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())?;
+        let params: Vec<&str> = self.host.split(":").collect();
+        let host = params[0];
+        let port: u16 = params[1].parse()?;
+        if self.ipv6 {
+            let response = resolver.ipv6_lookup(host).await?;
+            let address = response.into_iter().next();
+            if let Some(addr) = address {
+                return Ok(Some(SocketAddr::new(IpAddr::V6(addr), port)));
+            }
+
+            return Ok(None);
+        } else {
+            let response = resolver.ipv4_lookup(host).await?;
+            let address = response.into_iter().next();
+            if let Some(addr) = address {
+                return Ok(Some(SocketAddr::new(IpAddr::V4(addr), port)));
+            }
+
+            return Ok(None);
+        }
+    }
+
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut count = 5;
         let mut ping_min = 10_000_000;
 
+        let address = self.resolve_ip().await?;
+        let addr = match address {
+            Some(addr) => addr,
+            None => return Ok(false),
+        };
+
         while count != 0 {
-            let task = request_tcp_ping(&self.host);
+            let task = request_tcp_ping(&addr);
             let ping_ms = timeout(Duration::from_micros(10_000_000), task)
                 .await
                 .unwrap_or(Ok(10_000_000))
@@ -68,13 +106,19 @@ impl SpeedtestNetClient {
         let (stop_tx, stop_rx) = watch::channel("run");
         let mut counters: Vec<Receiver<u128>> = vec![];
 
+        let address = self.resolve_ip().await?;
+        let addr = match address {
+            Some(addr) => addr,
+            None => return Ok(false),
+        };
+
         for _i in 0..self.thread {
-            let host = self.host.clone();
+            let a = addr.clone();
             let b = barrier.clone();
             let mut r = stop_rx.clone();
             let (c_tx, c_rx) = watch::channel(0);
             counters.push(c_rx);
-            tokio::spawn(async move { request_tcp_download(&host, b, &mut r, c_tx).await });
+            tokio::spawn(async move { request_tcp_download(a, b, &mut r, c_tx).await });
         }
 
         let mut last = 0;
@@ -115,13 +159,19 @@ impl SpeedtestNetClient {
         let (stop_tx, stop_rx) = watch::channel("run");
         let mut counters: Vec<Receiver<u128>> = vec![];
 
+        let address = self.resolve_ip().await?;
+        let addr = match address {
+            Some(addr) => addr,
+            None => return Ok(false),
+        };
+
         for _i in 0..self.thread {
-            let host = self.host.clone();
+            let a = addr.clone();
             let b = barrier.clone();
-            let mut r = stop_rx.clone();
+            let r = stop_rx.clone();
             let (c_tx, c_rx) = watch::channel(0);
             counters.push(c_rx);
-            tokio::spawn(async move { request_tcp_upload(&host, b, &mut r, c_tx).await });
+            tokio::spawn(async move { request_tcp_upload(a, b, r, c_tx).await });
         }
 
         let mut last = 0;

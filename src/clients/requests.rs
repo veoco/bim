@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -11,15 +12,15 @@ use tokio::sync::{
     Barrier,
 };
 
-pub async fn request_tcp_ping(host: &str) -> Result<u128, Box<dyn Error + Send + Sync>> {
+pub async fn request_tcp_ping(host: &SocketAddr) -> Result<u128, Box<dyn Error + Send + Sync>> {
     let now = Instant::now();
-    let _stream = TcpStream::connect(host).await.unwrap();
+    let _stream = TcpStream::connect(host).await?;
     let used = now.elapsed().as_micros();
     Ok(used)
 }
 
 pub async fn request_tcp_download(
-    host: &str,
+    addr: SocketAddr,
     barrier: Arc<Barrier>,
     stop_rx: &mut Receiver<&str>,
     counter_tx: Sender<u128>,
@@ -29,7 +30,7 @@ pub async fn request_tcp_download(
     let command = format!("DOWNLOAD {}\n", data_size);
     let mut buff: [u8; 16384] = [0; 16384];
 
-    let mut stream = TcpStream::connect(&host).await?;
+    let mut stream = TcpStream::connect(addr).await?;
     stream.set_nodelay(true)?;
     let _r = barrier.wait().await;
     stream.write_all(command.as_bytes()).await?;
@@ -54,9 +55,9 @@ pub async fn request_tcp_download(
 }
 
 pub async fn request_tcp_upload(
-    host: &str,
+    addr: SocketAddr,
     barrier: Arc<Barrier>,
-    stop_rx: &mut Receiver<&str>,
+    stop_rx: Receiver<&str>,
     counter_tx: Sender<u128>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let mut count = 0;
@@ -66,7 +67,7 @@ pub async fn request_tcp_upload(
 
     let command = format!("UPLOAD {} 0\n", data_size);
 
-    let mut stream = TcpStream::connect(&host).await?;
+    let mut stream = TcpStream::connect(addr).await?;
     stream.set_nodelay(true)?;
     let _r = barrier.wait().await;
     stream.write_all(command.as_bytes()).await?;
@@ -92,13 +93,17 @@ pub async fn request_tcp_upload(
 
 pub async fn request_http_download(
     url: Url,
+    addr: SocketAddr,
     barrier: Arc<Barrier>,
     stop_rx: &mut Receiver<&str>,
     counter_tx: Sender<u128>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let mut count = 0;
 
+    let domain = url.host_str().unwrap();
+
     let client = reqwest::Client::builder()
+        .resolve(domain, addr)
         .timeout(Duration::from_secs(15))
         .build()?;
 
@@ -120,6 +125,7 @@ pub async fn request_http_download(
 
 pub async fn request_http_upload(
     url: Url,
+    addr: SocketAddr,
     barrier: Arc<Barrier>,
     counter_tx: Sender<u128>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
@@ -141,7 +147,8 @@ pub async fn request_http_upload(
     };
 
     let body = Body::wrap_stream(s);
-    let client = reqwest::Client::builder().build()?;
+    let domain = url.host_str().unwrap();
+    let client = reqwest::Client::builder().resolve(domain, addr).build()?;
 
     let _r = barrier.wait().await;
     let _res = client

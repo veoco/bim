@@ -20,9 +20,12 @@ use utils::{justify_name, BOLD, ENDC};
 struct Args {
     #[clap(value_parser)]
     server: String,
-    /// Server list search
+    /// Enable server list search
     #[clap(short, long, action)]
     server_list: bool,
+    /// Enable IPv6 only test
+    #[clap(short = '6', long, action)]
+    ipv6: bool,
     /// Number of thread
     #[clap(short, long, value_parser, default_value_t = 4)]
     thread: u8,
@@ -61,6 +64,7 @@ async fn get_servers(args: &Args) -> Result<Option<Vec<HashMap<String, String>>>
         let detail = s.get("detail").unwrap();
         let mut r = HashMap::new();
         r.insert(String::from("provider"), provider.clone());
+        r.insert(String::from("ipv6"), detail.get("ipv6").unwrap().to_string());
 
         if provider == "Ookla" {
             let host = detail.get("host").unwrap().as_str().unwrap().to_string();
@@ -135,13 +139,22 @@ async fn main() {
 
     for location in locations.unwrap_or(vec![]).iter() {
         let provider = location.get("provider").unwrap();
+        let ipv6 = location.get("ipv6").unwrap();
+        let ipv6 = if ipv6 == "false" {false} else {true};
+        if args.ipv6 {
+            if !ipv6 {
+                continue;
+            }
+        }
 
         if provider == "Ookla" {
             let name = location.get("name").unwrap();
             let host = location.get("host").unwrap();
+
             let mut client = SpeedtestNetClient {
                 name: name.clone(),
                 host: host.clone(),
+                ipv6: if args.ipv6 && ipv6 {true} else {false},
                 thread: args.thread,
                 result: (0, 0, 0),
             };
@@ -157,6 +170,7 @@ async fn main() {
                 name: name.clone(),
                 download_url: download_url.clone(),
                 upload_url: upload_url.clone(),
+                ipv6: if args.ipv6 {true} else {false},
                 thread: args.thread,
                 result: (0, 0, 0),
             };

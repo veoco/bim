@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,6 +9,8 @@ use tokio::sync::{
     Barrier,
 };
 use tokio::time::{interval, sleep, timeout};
+use trust_dns_resolver::config::*;
+use trust_dns_resolver::TokioAsyncResolver;
 
 use crate::clients::{
     requests::{request_http_download, request_http_upload, request_tcp_ping},
@@ -18,6 +21,7 @@ pub struct LibreSpeedOrgClient {
     pub name: String,
     pub download_url: String,
     pub upload_url: String,
+    pub ipv6: bool,
     pub thread: u8,
     pub result: (u128, u128, u128),
 }
@@ -41,12 +45,40 @@ impl Speedtest for LibreSpeedOrgClient {
 }
 
 impl LibreSpeedOrgClient {
+    async fn resolve_ip(&self) -> Result<Option<SocketAddr>, Box<dyn Error>> {
+        let resolver =
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())?;
+        let url = Url::parse(&self.download_url)?;
+        let host = url.host_str().unwrap();
+        let port = url.port_or_known_default().unwrap();
+        if self.ipv6 {
+            let response = resolver.ipv6_lookup(host).await?;
+            let address = response.into_iter().next();
+            if let Some(addr) = address {
+                return Ok(Some(SocketAddr::new(IpAddr::V6(addr), port)));
+            }
+
+            return Ok(None);
+        } else {
+            let response = resolver.ipv4_lookup(host).await?;
+            let address = response.into_iter().next();
+            if let Some(addr) = address {
+                return Ok(Some(SocketAddr::new(IpAddr::V4(addr), port)));
+            }
+
+            return Ok(None);
+        }
+    }
+
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut count = 5;
         let mut ping_min = 10_000_000;
 
-        let url = Url::parse(&self.download_url)?;
-        let addr = url.socket_addrs(|| None).unwrap()[0].to_string();
+        let address = self.resolve_ip().await?;
+        let addr = match address {
+            Some(addr) => addr,
+            None => return Ok(false),
+        };
 
         while count != 0 {
             let task = request_tcp_ping(&addr);
@@ -79,13 +111,20 @@ impl LibreSpeedOrgClient {
         let mut url = Url::parse(&self.download_url)?;
         url.set_query(Some("ckSize=1024"));
 
+        let address = self.resolve_ip().await?;
+        let addr = match address {
+            Some(addr) => addr,
+            None => return Ok(false),
+        };
+
         for _i in 0..self.thread {
             let url = url.clone();
+            let a = addr.clone();
             let b = barrier.clone();
             let mut r = stop_rx.clone();
             let (c_tx, c_rx) = watch::channel(0);
             counters.push(c_rx);
-            tokio::spawn(async move { request_http_download(url, b, &mut r, c_tx).await });
+            tokio::spawn(async move { request_http_download(url, a, b, &mut r, c_tx).await });
         }
 
         let mut last = 0;
@@ -130,12 +169,19 @@ impl LibreSpeedOrgClient {
 
         let url = Url::parse(&self.upload_url)?;
 
+        let address = self.resolve_ip().await?;
+        let addr = match address {
+            Some(addr) => addr,
+            None => return Ok(false),
+        };
+
         for _i in 0..self.thread {
             let url = url.clone();
+            let a = addr.clone();
             let b = barrier.clone();
             let (c_tx, c_rx) = watch::channel(0);
             counters.push(c_rx);
-            tokio::spawn(async move { request_http_upload(url, b, c_tx).await });
+            tokio::spawn(async move { request_http_upload(url, a, b, c_tx).await });
         }
 
         let mut last = 0;
