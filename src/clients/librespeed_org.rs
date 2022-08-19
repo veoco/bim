@@ -72,7 +72,7 @@ impl LibreSpeedOrgClient {
 
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut count = 5;
-        let mut ping_min = 10_000_000;
+        let mut ping_min = 1_000_000;
 
         let address = self.resolve_ip().await?;
         let addr = match address {
@@ -82,14 +82,14 @@ impl LibreSpeedOrgClient {
 
         while count != 0 {
             let task = request_tcp_ping(&addr);
-            let ping_ms = timeout(Duration::from_micros(10_000_000), task)
+            let ping_ms = timeout(Duration::from_micros(1_000_000), task)
                 .await
-                .unwrap_or(Ok(10_000_000))
-                .unwrap_or(10_000_000);
+                .unwrap_or(Ok(1_000_000))
+                .unwrap_or(1_000_000);
             if ping_ms < ping_min {
                 ping_min = ping_ms;
             }
-            self.result.2 = if ping_min != 10_000_000 {
+            self.result.2 = if ping_min != 1_000_000 {
                 ping_min
             } else {
                 return Ok(false);
@@ -98,7 +98,7 @@ impl LibreSpeedOrgClient {
             sleep(Duration::from_millis(500)).await;
             count -= 1;
         }
-        self.result.2 = if ping_min != 10000 { ping_min } else { 0 };
+        self.result.2 = if ping_min != 1_000_000 { ping_min } else { 0 };
         self.show();
         Ok(true)
     }
