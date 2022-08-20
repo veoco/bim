@@ -120,15 +120,29 @@ impl SpeedTest {
     }
 
     fn get_ping(&self) -> f64 {
-        let mut min_ping = 1_000_000;
         let pos = self.index[2] as usize;
-        for i in (0..pos).rev() {
-            let p = self.ping[i];
-            if p > 0 && p < min_ping {
-                min_ping = p;
+        let mut sum = 0;
+        let mut ping_min = 1_000_000;
+        let mut ping_max = 0;
+        if pos <= 2 {
+            for i in (0..pos).rev() {
+                sum += self.ping[i];
             }
+            return sum as f64 / pos as f64;
+        } else {
+            for i in (0..pos).rev() {
+                let ping = self.ping[i];
+                sum += ping;
+                if ping < ping_min {
+                    ping_min = ping;
+                    continue;
+                }
+                if ping > ping_max {
+                    ping_max = ping;
+                }
+            }
+            return (sum - ping_max - ping_min) as f64 / (pos - 2) as f64;
         }
-        min_ping as f64
     }
 
     fn set_ping(&mut self, ping: u128) {
