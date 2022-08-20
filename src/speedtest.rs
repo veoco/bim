@@ -207,6 +207,10 @@ impl SpeedTest {
             sleep(Duration::from_millis(500)).await;
             count -= 1;
         }
+
+        if self.get_ping() > 999_999.0 {
+            return Ok(false);
+        }
         Ok(true)
     }
 
