@@ -7,11 +7,11 @@ use clap::Parser;
 use serde_json::Value;
 use tokio;
 
-mod clients;
+mod requests;
+mod speedtest;
 mod utils;
 mod windows;
-use clients::librespeed_org::LibreSpeedOrgClient;
-use clients::speedtest_net::SpeedtestNetClient;
+use speedtest::SpeedTest;
 use utils::{justify_name, BOLD, ENDC};
 
 /// Simple program to test network
@@ -62,26 +62,30 @@ async fn get_servers(args: &Args) -> Result<Option<Vec<HashMap<String, String>>>
     for s in servers {
         let provider = s.get("provider").unwrap().as_str().unwrap().to_string();
         let detail = s.get("detail").unwrap();
+        let mut name = detail.get("name").unwrap().as_str().unwrap().to_string();
         let mut r = HashMap::new();
+
         r.insert(String::from("provider"), provider.clone());
-        r.insert(String::from("ipv6"), detail.get("ipv6").unwrap().to_string());
+        r.insert(
+            String::from("ipv6"),
+            detail.get("ipv6").unwrap().to_string(),
+        );
+        r.insert(
+            String::from("dl"),
+            detail.get("dl").unwrap().as_str().unwrap().to_string(),
+        );
+        r.insert(
+            String::from("ul"),
+            detail.get("ul").unwrap().as_str().unwrap().to_string(),
+        );
 
         if provider == "Ookla" {
-            let host = detail.get("host").unwrap().as_str().unwrap().to_string();
-            let name = detail.get("name").unwrap().as_str().unwrap().to_string();
             let cc = detail.get("cc").unwrap().as_str().unwrap().to_string();
             let sponsor = detail.get("sponsor").unwrap().as_str().unwrap().to_string();
 
-            let name = format!("[{}] {} - {}", cc, sponsor, name);
-            let name = justify_name(&name);
-
-            r.insert(String::from("name"), name);
-            r.insert(String::from("host"), host);
+            name = format!("[{}] {} - {}", cc, sponsor, name);
+            name = justify_name(&name);
         } else if provider == "LibreSpeed" {
-            let mut server = detail.get("server").unwrap().as_str().unwrap().to_string();
-            let name = detail.get("name").unwrap().as_str().unwrap().to_string();
-            let dl_url = detail.get("dlURL").unwrap().as_str().unwrap().to_string();
-            let ul_url = detail.get("ulURL").unwrap().as_str().unwrap().to_string();
             let sponsor_name = detail
                 .get("sponsorName")
                 .unwrap()
@@ -89,21 +93,10 @@ async fn get_servers(args: &Args) -> Result<Option<Vec<HashMap<String, String>>>
                 .unwrap()
                 .to_string();
 
-            let name = format!("{} - {}", sponsor_name, name);
-            let name = justify_name(&name);
-            if server.starts_with("//") {
-                server = String::from("https:") + &server;
-            }
-            if !server.ends_with("/") {
-                server = server + &String::from("/");
-            }
-            let download_url = server.clone() + &dl_url;
-            let upload_url = server.clone() + &ul_url;
-
-            r.insert(String::from("name"), name);
-            r.insert(String::from("download_url"), download_url);
-            r.insert(String::from("upload_url"), upload_url);
+            name = format!("{} - {}", sponsor_name, name);
+            name = justify_name(&name);
         }
+        r.insert(String::from("name"), name);
 
         results.push(r);
     }
@@ -138,48 +131,35 @@ async fn main() {
     let start = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     for location in locations.unwrap_or(vec![]).iter() {
-        let provider = location.get("provider").unwrap();
+        let provider = location.get("provider").unwrap().clone();
+
         let ipv6 = location.get("ipv6").unwrap();
-        let ipv6 = if ipv6 == "false" {false} else {true};
+        let ipv6 = if ipv6 == "false" { false } else { true };
         if args.ipv6 {
             if !ipv6 {
                 continue;
             }
         }
 
-        if provider == "Ookla" {
-            let name = location.get("name").unwrap();
-            let host = location.get("host").unwrap();
+        let name = location.get("name").unwrap().clone();
+        let download_url = location.get("dl").unwrap().clone();
+        let upload_url = location.get("ul").unwrap().clone();
 
-            let mut client = SpeedtestNetClient {
-                name: name.clone(),
-                host: host.clone(),
-                ipv6: if args.ipv6 && ipv6 {true} else {false},
-                thread: args.thread,
-                result: (0, 0, 0),
-            };
-            let res = client.run().await;
-            if !res {
-                count_failed += 1;
-            }
-        } else if provider == "LibreSpeed" {
-            let name = location.get("name").unwrap();
-            let download_url = location.get("download_url").unwrap();
-            let upload_url = location.get("upload_url").unwrap();
-            let mut client = LibreSpeedOrgClient {
-                name: name.clone(),
-                download_url: download_url.clone(),
-                upload_url: upload_url.clone(),
-                ipv6: if args.ipv6 {true} else {false},
-                thread: args.thread,
-                result: (0, 0, 0),
-            };
-            let res = client.run().await;
+        let client = SpeedTest::build(
+            provider,
+            name,
+            download_url,
+            upload_url,
+            if args.ipv6 && ipv6 { true } else { false },
+            args.thread,
+        ).await;
+
+        if let Some(mut c) = client {
+            let res = c.run().await;
             if !res {
                 count_failed += 1;
             }
         }
-
         count_all += 1;
     }
 

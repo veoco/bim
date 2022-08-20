@@ -75,11 +75,3 @@ pub fn justify_name(name: &String) -> String {
     }
     justified_name
 }
-
-pub fn format_size(size: u128) -> String {
-    if size > 0 {
-        format!("{:.1} Mbps", (size as f64) / 125_000.0)
-    } else {
-        String::from("-")
-    }
-}
