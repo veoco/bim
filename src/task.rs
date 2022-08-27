@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 
-use crate::speedtest::SpeedTest;
+use reqwest::header;
 use serde_json::Value;
+
+use crate::speedtest::SpeedTest;
 
 pub async fn register_machine(email: &str, token: &str) -> Result<String, Box<dyn Error>> {
     let machine_id = machine_uid::get()?;
@@ -11,11 +13,19 @@ pub async fn register_machine(email: &str, token: &str) -> Result<String, Box<dy
     map.insert("email", email);
     map.insert("token", token);
     map.insert("machine_id", &machine_id);
+
     let url = format!(
         "{}api/machine/",
         env::var("BENCH_URL").unwrap_or(String::from("https://bench.im/"))
     );
-    let client = reqwest::Client::new();
+
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        header::USER_AGENT,
+        header::HeaderValue::from_static("bim 1"),
+    );
+
+    let client = reqwest::Client::builder().default_headers(headers).build()?;
     let res = client
         .post(url)
         .json(&map)
@@ -40,7 +50,13 @@ pub async fn get_tasks(
         token
     );
 
-    let client = reqwest::Client::new();
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        header::USER_AGENT,
+        header::HeaderValue::from_static("bim 1"),
+    );
+
+    let client = reqwest::Client::builder().default_headers(headers).build()?;
     let tasks = client
         .get(url)
         .send()
@@ -77,7 +93,13 @@ pub async fn send_result(
         env::var("BENCH_URL").unwrap_or(String::from("https://bench.im/"))
     );
 
-    let client = reqwest::Client::new();
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        header::USER_AGENT,
+        header::HeaderValue::from_static("bim 1"),
+    );
+
+    let client = reqwest::Client::builder().default_headers(headers).build()?;
     let _res = client.post(url).json(&map).send().await?;
     Ok(true)
 }
