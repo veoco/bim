@@ -21,10 +21,10 @@ pub struct SpeedTest {
     pub name: String,
     pub download_url: String,
     pub upload_url: String,
-    pub state: String,
 
     pub ipv6: bool,
     pub thread: u8,
+    pub slient: bool,
 
     address: SocketAddr,
 
@@ -42,6 +42,7 @@ impl SpeedTest {
         upload_url: String,
         ipv6: bool,
         thread: u8,
+        slient: bool,
     ) -> Option<SpeedTest> {
         let address = SpeedTest::resolve_ip(&download_url, ipv6)
             .await
@@ -52,9 +53,9 @@ impl SpeedTest {
             name,
             download_url,
             upload_url,
-            state: String::from("waiting"),
             ipv6,
             thread,
+            slient,
             address,
             upload: [0; 14],
             download: [0; 14],
@@ -154,7 +155,7 @@ impl SpeedTest {
         &self.name
     }
 
-    fn get_result(&self) -> (f64, f64, f64) {
+    pub fn get_result(&self) -> (f64, f64, f64) {
         let upload = self.get_upload() / 125_000.0;
         let download = self.get_download() / 125_000.0;
         let ping = self.get_ping() / 1000.0;
@@ -187,14 +188,19 @@ impl SpeedTest {
     }
 
     fn show(&self) {
-        let (upload, download, ping) = self.get_result();
-        let name = self.get_name();
+        if !self.slient {
+            let (upload, download, ping) = self.get_result();
+            let name = self.get_name();
 
-        self.write_stdout(name, upload, download, ping)
+            self.write_stdout(name, upload, download, ping)
+        }
     }
 
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut count = 5;
+        if self.slient{
+            count = 20;
+        }
 
         while count != 0 {
             let task = request_tcp_ping(&self.address);
@@ -300,7 +306,9 @@ impl SpeedTest {
         } else {
             let _download = self.download().await.unwrap_or(false);
             let _upload = self.upload().await.unwrap_or(false);
-            println!("");
+            if !self.slient{
+                println!("");
+            }
         }
         true
     }

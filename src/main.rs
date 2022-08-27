@@ -6,12 +6,15 @@ use chrono::prelude::*;
 use clap::Parser;
 use serde_json::Value;
 use tokio;
+use tokio::time::{interval, Duration};
 
 mod requests;
 mod speedtest;
+mod task;
 mod utils;
 mod windows;
 use speedtest::SpeedTest;
+use task::{get_tasks, register_machine, send_result};
 use utils::{justify_name, BOLD, ENDC};
 
 /// Simple program to test network
@@ -29,6 +32,9 @@ struct Args {
     /// Number of thread
     #[clap(short, long, value_parser, default_value_t = 4)]
     thread: u8,
+    /// Deply mode
+    #[clap(short, long, action)]
+    deploy: bool,
 }
 
 async fn get_servers(args: &Args) -> Result<Option<Vec<HashMap<String, String>>>, Box<dyn Error>> {
@@ -103,9 +109,7 @@ async fn get_servers(args: &Args) -> Result<Option<Vec<HashMap<String, String>>>
     Ok(Some(results))
 }
 
-#[tokio::main]
-async fn main() {
-    let args = Args::parse();
+async fn run_once(args: Args) {
     let version = env!("CARGO_PKG_VERSION");
     let line = "-".repeat(80);
 
@@ -152,7 +156,9 @@ async fn main() {
             upload_url,
             if args.ipv6 && ipv6 { true } else { false },
             args.thread,
-        ).await;
+            false,
+        )
+        .await;
 
         if let Some(mut c) = client {
             let res = c.run().await;
@@ -176,4 +182,60 @@ async fn main() {
         print!(" Single Thread")
     }
     println!();
+}
+
+async fn run_forever(email_token: String) {
+    let email_token: Vec<&str> = email_token.split(":").collect();
+    let email = email_token[0];
+    let token = email_token[1];
+    let machine_id = register_machine(email, token)
+        .await
+        .unwrap_or("".to_string());
+
+    if machine_id != "" {
+        println!("{} registed", machine_id);
+        let mut time_interval = interval(Duration::from_secs(300));
+
+        loop {
+            time_interval.tick().await;
+            let tasks = get_tasks(&machine_id, email, token).await.unwrap_or(vec![]);
+            for task in tasks {
+                let task_id = task.get("pk").unwrap().to_string();
+                let server = task.get("server").unwrap();
+                let download_url = server.get("dl").unwrap().as_str().unwrap().to_string();
+                let upload_url = server.get("ul").unwrap().as_str().unwrap().to_string();
+                let provider = server.get("provider").unwrap().as_str().unwrap().to_string();
+                let ipv6 = server.get("ipv6").unwrap().as_bool().unwrap();
+                let thread = server.get("thread").unwrap().as_u64().unwrap() as u8;
+
+                let client = SpeedTest::build(
+                    provider,
+                    "".to_string(),
+                    download_url,
+                    upload_url,
+                    ipv6,
+                    thread,
+                    true,
+                )
+                .await;
+
+                if let Some(mut c) = client {
+                    let res = c.run().await;
+                    if res {
+                        let _r = send_result(&task_id, email, token, &c).await;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
+    if args.deploy {
+        run_forever(args.server).await;
+    } else {
+        run_once(args).await;
+    }
 }
