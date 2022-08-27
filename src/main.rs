@@ -194,7 +194,7 @@ async fn run_forever(email_token: String) {
 
     if machine_id != "" {
         println!("{} registed", machine_id);
-        let mut time_interval = interval(Duration::from_secs(300));
+        let mut time_interval = interval(Duration::from_secs(600));
 
         loop {
             time_interval.tick().await;
