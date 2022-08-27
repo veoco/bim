@@ -1,9 +1,9 @@
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 
-use serde_json::Value;
 use crate::speedtest::SpeedTest;
-
+use serde_json::Value;
 
 pub async fn register_machine(email: &str, token: &str) -> Result<String, Box<dyn Error>> {
     let machine_id = machine_uid::get()?;
@@ -11,9 +11,10 @@ pub async fn register_machine(email: &str, token: &str) -> Result<String, Box<dy
     map.insert("email", email);
     map.insert("token", token);
     map.insert("machine_id", &machine_id);
-    let url = "https://bench.im/api/machine/";
-    let url = "http://127.0.0.1:5173/api/machine/";
-
+    let url = format!(
+        "{}api/machine/",
+        env::var("BENCH_URL").unwrap_or(String::from("https://bench.im/"))
+    );
     let client = reqwest::Client::new();
     let res = client
         .post(url)
@@ -32,12 +33,11 @@ pub async fn get_tasks(
     token: &str,
 ) -> Result<Vec<Value>, Box<dyn Error>> {
     let url = format!(
-        "https://bench.im/api/machine_tasks/?machine_id={}&email={}&token={}",
-        machine_id, email, token
-    );
-    let url = format!(
-        "http://127.0.0.1:5173/api/machine_tasks/?machine_id={}&email={}&token={}",
-        machine_id, email, token
+        "{}api/machine_tasks/?machine_id={}&email={}&token={}",
+        env::var("BENCH_URL").unwrap_or(String::from("https://bench.im/")),
+        machine_id,
+        email,
+        token
     );
 
     let client = reqwest::Client::new();
@@ -55,8 +55,12 @@ pub async fn get_tasks(
     Ok(tasks)
 }
 
-
-pub async fn send_result(task_id: &str, email: &str, token: &str, speedtest: &SpeedTest) -> Result<bool, Box<dyn Error>> {
+pub async fn send_result(
+    task_id: &str,
+    email: &str,
+    token: &str,
+    speedtest: &SpeedTest,
+) -> Result<bool, Box<dyn Error>> {
     let result = speedtest.get_result();
     let upload = result.0.to_string();
     let download = result.1.to_string();
@@ -68,14 +72,12 @@ pub async fn send_result(task_id: &str, email: &str, token: &str, speedtest: &Sp
     map.insert("upload", &upload);
     map.insert("download", &download);
     map.insert("ping", &ping);
-    let url = "https://bench.im/api/result/";
-    let url = "http://127.0.0.1:5173/api/result/";
+    let url = format!(
+        "{}api/result/",
+        env::var("BENCH_URL").unwrap_or(String::from("https://bench.im/"))
+    );
 
     let client = reqwest::Client::new();
-    let _res = client
-        .post(url)
-        .json(&map)
-        .send()
-        .await?;
+    let _res = client.post(url).json(&map).send().await?;
     Ok(true)
 }
