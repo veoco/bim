@@ -2,8 +2,11 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
+use base64::encode;
 use chrono::prelude::*;
 use clap::Parser;
+use log::{debug, error, info};
+use reqwest::header;
 use serde_json::Value;
 use tokio;
 use tokio::time::{interval, Duration};
@@ -185,45 +188,87 @@ async fn run_once(args: Args) {
 }
 
 async fn run_forever(email_token: String) {
-    let email_token: Vec<&str> = email_token.split(":").collect();
-    let email = email_token[0];
-    let token = email_token[1];
-    let machine_id = register_machine(email, token)
-        .await
-        .unwrap_or("".to_string());
+    let auth = format!("Basic {}", encode(email_token));
+    debug!("{}", auth);
 
-    if machine_id != "" {
-        println!("{} registed", machine_id);
-        let mut time_interval = interval(Duration::from_secs(600));
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        header::USER_AGENT,
+        header::HeaderValue::from_static("bim 1"),
+    );
+    headers.insert(
+        header::AUTHORIZATION,
+        header::HeaderValue::from_str(&auth).unwrap(),
+    );
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap();
 
-        loop {
-            time_interval.tick().await;
-            let tasks = get_tasks(&machine_id, email, token).await.unwrap_or(vec![]);
-            for task in tasks {
-                let task_id = task.get("pk").unwrap().to_string();
-                let server = task.get("server").unwrap();
-                let download_url = server.get("dl").unwrap().as_str().unwrap().to_string();
-                let upload_url = server.get("ul").unwrap().as_str().unwrap().to_string();
-                let provider = server.get("provider").unwrap().as_str().unwrap().to_string();
-                let ipv6 = server.get("ipv6").unwrap().as_bool().unwrap();
-                let thread = server.get("thread").unwrap().as_u64().unwrap() as u8;
+    let r = register_machine(&client).await;
+    let machine_id = match r {
+        Ok(mid) => {
+            if mid == String::from("") {
+                info!("Username or Password error");
+                panic!();
+            }
+            info!("Machine {} registed", mid);
+            mid
+        }
+        Err(_) => {
+            error!("Network error");
+            panic!();
+        }
+    };
 
-                let client = SpeedTest::build(
-                    provider,
-                    "".to_string(),
-                    download_url,
-                    upload_url,
-                    ipv6,
-                    thread,
-                    true,
-                )
-                .await;
+    let mut time_interval = interval(Duration::from_secs(600));
 
-                if let Some(mut c) = client {
-                    let res = c.run().await;
-                    if res {
-                        let _r = send_result(&task_id, email, token, &c).await;
-                    }
+    loop {
+        time_interval.tick().await;
+        let r = get_tasks(&machine_id, &client).await;
+        let tasks = match r {
+            Ok(tasks) => {
+                info!("Fetched {} tasks", tasks.len());
+                tasks
+            }
+            Err(_) => {
+                error!("Network error");
+                vec![]
+            }
+        };
+        for task in tasks {
+            let task_id = task.get("pk").unwrap().to_string();
+            let server = task.get("server").unwrap();
+            let download_url = server.get("dl").unwrap().as_str().unwrap().to_string();
+            let upload_url = server.get("ul").unwrap().as_str().unwrap().to_string();
+            let provider = server
+                .get("provider")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string();
+            let ipv6 = server.get("ipv6").unwrap().as_bool().unwrap();
+            let thread = server.get("thread").unwrap().as_u64().unwrap() as u8;
+
+            let speedtest = SpeedTest::build(
+                provider,
+                "".to_string(),
+                download_url,
+                upload_url,
+                ipv6,
+                thread,
+                true,
+            )
+            .await;
+
+            if let Some(mut c) = speedtest {
+                info!("Running task {}",  task_id);
+                let res = c.run().await;
+                if res {
+                    info!("Uploading task {} result",  task_id);
+                    let _r = send_result(&task_id, &client, &c).await;
+                } else {
+                    info!("Task {} run failed",  task_id);
                 }
             }
         }
@@ -233,9 +278,12 @@ async fn run_forever(email_token: String) {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    env_logger::init();
     if args.deploy {
+        info!("Enter deploy mode");
         run_forever(args.server).await;
     } else {
+        info!("Enter oneshot mode");
         run_once(args).await;
     }
 }
