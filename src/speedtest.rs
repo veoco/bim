@@ -198,9 +198,6 @@ impl SpeedTest {
 
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut count = 5;
-        if self.slient{
-            count = 20;
-        }
 
         while count != 0 {
             let task = request_tcp_ping(&self.address);
