@@ -242,7 +242,10 @@ async fn run_forever(email_token: String) {
                 vec![]
             }
         };
+
+        let mut task_interval = interval(Duration::from_secs(60));
         for task in tasks {
+            task_interval.tick().await;
             let task_id = task.get("pk").unwrap().to_string();
             let server = task.get("server").unwrap();
             let download_url = server.get("dl").unwrap().as_str().unwrap().to_string();
