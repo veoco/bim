@@ -221,7 +221,7 @@ async fn run_forever(email_token: String) {
         }
     };
 
-    let mut time_interval = interval(Duration::from_secs(600));
+    let mut time_interval = interval(Duration::from_secs(3600));
 
     loop {
         time_interval.tick().await;
