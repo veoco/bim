@@ -9,7 +9,7 @@ use log::{debug, error, info};
 use reqwest::header;
 use serde_json::Value;
 use tokio;
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, sleep, Duration};
 
 mod requests;
 mod speedtest;
@@ -221,6 +221,12 @@ async fn run_forever(email_token: String) {
         }
     };
 
+    let utc = Utc::now();
+    let wait_minute = 60 - utc.minute();
+
+    info!("Wait {} minute for task sync", wait_minute);
+    sleep(Duration::from_secs((wait_minute * 60) as u64)).await;
+
     let mut time_interval = interval(Duration::from_secs(3600));
 
     loop {
@@ -262,13 +268,13 @@ async fn run_forever(email_token: String) {
             .await;
 
             if let Some(mut c) = speedtest {
-                info!("Running task {}",  task_id);
+                info!("Running task {}", task_id);
                 let res = c.run().await;
                 if res {
-                    info!("Uploading task {} result",  task_id);
+                    info!("Uploading task {} result", task_id);
                     let _r = send_result(&task_id, &client, &c).await;
                 } else {
-                    info!("Task {} run failed",  task_id);
+                    info!("Task {} run failed", task_id);
                 }
             }
         }
