@@ -63,14 +63,14 @@ pub fn justify_name(name: &String) -> String {
 
     for c in name.chars() {
         let w = get_width(c as u32);
-        if name_width + w < 46 {
+        if name_width + w < 36 {
             name_width += w;
             justified_name.push(c);
         }
     }
 
-    if name_width < 46 {
-        let space_count = 46 - name_width;
+    if name_width < 36 {
+        let space_count = 36 - name_width;
         justified_name += " ".repeat(space_count as usize).as_str();
     }
     justified_name

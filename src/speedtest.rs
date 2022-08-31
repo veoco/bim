@@ -30,7 +30,7 @@ pub struct SpeedTest {
 
     upload: [u128; 14],
     download: [u128; 14],
-    ping: [u128; 20],
+    ping: [u128; 10],
     index: [u8; 3],
 }
 
@@ -59,7 +59,7 @@ impl SpeedTest {
             address,
             upload: [0; 14],
             download: [0; 14],
-            ping: [0; 20],
+            ping: [0; 10],
             index: [0; 3],
         })
     }
@@ -121,29 +121,13 @@ impl SpeedTest {
     }
 
     fn get_ping(&self) -> f64 {
-        let pos = self.index[2] as usize;
-        let mut sum = 0;
         let mut ping_min = 1_000_000;
-        let mut ping_max = 0;
-        if pos <= 2 {
-            for i in (0..pos).rev() {
-                sum += self.ping[i];
+        for ping in self.ping {
+            if 0 < ping && ping < ping_min {
+                ping_min = ping;
             }
-            return sum as f64 / pos as f64;
-        } else {
-            for i in (0..pos).rev() {
-                let ping = self.ping[i];
-                sum += ping;
-                if ping < ping_min {
-                    ping_min = ping;
-                    continue;
-                }
-                if ping > ping_max {
-                    ping_max = ping;
-                }
-            }
-            return (sum - ping_max - ping_min) as f64 / (pos - 2) as f64;
         }
+        ping_min as f64
     }
 
     fn set_ping(&mut self, ping: u128) {
@@ -151,18 +135,35 @@ impl SpeedTest {
         self.index[2] = self.index[2] + 1
     }
 
+    fn get_jitter(&self) -> f64 {
+        let mut ping_min = 1_000_000;
+        for ping in self.ping {
+            if 0 < ping && ping < ping_min {
+                ping_min = ping;
+            }
+        }
+        let mut sum = 0;
+        for ping in self.ping {
+            if 0 < ping {
+                sum += ping - ping_min;
+            }
+        }
+        sum as f64 / 10.0
+    }
+
     fn get_name(&self) -> &str {
         &self.name
     }
 
-    pub fn get_result(&self) -> (f64, f64, f64) {
+    pub fn get_result(&self) -> (f64, f64, f64, f64) {
         let upload = self.get_upload() / 125_000.0;
         let download = self.get_download() / 125_000.0;
         let ping = self.get_ping() / 1000.0;
-        (upload, download, ping)
+        let jitter = self.get_jitter() / 1000.0;
+        (upload, download, ping, jitter)
     }
 
-    fn write_stdout(&self, name: &str, upload: f64, download: f64, ping: f64) {
+    fn write_stdout(&self, name: &str, upload: f64, download: f64, ping: f64, jitter: f64) {
         let upload = if self.index[0] != 0 {
             format!("{:.1} Mbps", upload)
         } else {
@@ -173,14 +174,12 @@ impl SpeedTest {
         } else {
             "-".to_string()
         };
-        let ping = if self.index[2] != 0 {
-            format!("{:.1} ms", ping)
-        } else {
-            "-".to_string()
-        };
+        let ping = format!("{:.1} ms", ping);
+        let jitter = format!("{:.1} ms", jitter);
+
         let line = format!(
-            "\r{BOLD}{}{BLUE}{:>12}{ENDC}{RED}{:>12}{ENDC}{GREEN}{:>10}{ENDC}{ENDC}",
-            name, upload, download, ping
+            "\r{BOLD}{}{BLUE}{:>12}{ENDC}{RED}{:>12}{ENDC}{GREEN}{:>10}{ENDC}{:>10}{ENDC}",
+            name, upload, download, ping, jitter
         );
         let mut stdout = std::io::stdout();
         let _r = stdout.write_all(line.as_bytes());
@@ -189,15 +188,15 @@ impl SpeedTest {
 
     fn show(&self) {
         if !self.slient {
-            let (upload, download, ping) = self.get_result();
+            let (upload, download, ping, jitter) = self.get_result();
             let name = self.get_name();
 
-            self.write_stdout(name, upload, download, ping)
+            self.write_stdout(name, upload, download, ping, jitter)
         }
     }
 
     async fn ping(&mut self) -> Result<bool, Box<dyn Error>> {
-        let mut count = 5;
+        let mut count = 10;
 
         while count != 0 {
             let task = request_tcp_ping(&self.address);
@@ -303,7 +302,7 @@ impl SpeedTest {
         } else {
             let _download = self.download().await.unwrap_or(false);
             let _upload = self.upload().await.unwrap_or(false);
-            if !self.slient{
+            if !self.slient {
                 println!("");
             }
         }

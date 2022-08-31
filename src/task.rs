@@ -64,17 +64,19 @@ pub async fn send_result(
     let upload = result.0.to_string();
     let download = result.1.to_string();
     let ping = result.2.to_string();
+    let jitter = result.3.to_string();
     let mut map = HashMap::new();
     map.insert("task_id", task_id);
     map.insert("upload", &upload);
     map.insert("download", &download);
     map.insert("ping", &ping);
+    map.insert("jitter", &jitter);
     let url = format!(
         "{}api/result/",
         env::var("BENCH_URL").unwrap_or(String::from("https://bench.im/"))
     );
 
-    info!("Task {} upload {} download {} ping {}", task_id, upload, download, ping);
+    info!("Task {} upload {} download {} ping {} jitter {}", task_id, upload, download, ping, jitter);
 
     let _res = client.post(url).json(&map).send().await?;
     Ok(true)

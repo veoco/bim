@@ -123,8 +123,8 @@ async fn run_once(args: Args) {
     let locations = get_servers(&args).await.unwrap();
 
     println!(
-        "{BOLD}{:<46}{:>12}{:>12}{:>10}{ENDC}",
-        "Location", "Upload", "Download", "Latency"
+        "{BOLD}{:<36}{:>12}{:>12}{:>10}{:>10}{ENDC}",
+        "Location", "Upload", "Download", "Latency", "Jitter"
     );
     println!("{line}");
 
