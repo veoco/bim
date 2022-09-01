@@ -42,7 +42,8 @@ pub async fn request_http_download(
 
     let _r = barrier.wait().await;
     let mut stream = client.get(url.clone()).send().await?;
-    while *stop_rx.borrow() != "stop" {
+    let mut retry = 0;
+    while *stop_rx.borrow() != "stop" && retry < 15 {
         while let Some(chunk) = stream.chunk().await? {
             count += chunk.len() as u128;
             let _r = counter_tx.send(count);
@@ -50,6 +51,7 @@ pub async fn request_http_download(
                 break;
             }
         }
+        retry += 1;
         stream = client.get(url.clone()).send().await?;
     }
 
