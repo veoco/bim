@@ -5,10 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Url;
-use tokio::sync::{
-    watch::{self, Receiver},
-    Barrier,
-};
+use tokio::sync::{watch, Barrier, Mutex};
 use tokio::time::{interval, sleep, timeout};
 use trust_dns_resolver::config::*;
 use trust_dns_resolver::TokioAsyncResolver;
@@ -219,7 +216,7 @@ impl SpeedTest {
     async fn download(&mut self) -> Result<bool, Box<dyn Error>> {
         let barrier = Arc::new(Barrier::new((self.thread + 1) as usize));
         let (stop_tx, stop_rx) = watch::channel("run");
-        let mut counters: Vec<Receiver<u128>> = vec![];
+        let counter = Arc::new(Mutex::new(0u128));
 
         let mut url = Url::parse(&self.download_url)?;
         if self.provider == "LibreSpeed" {
@@ -231,9 +228,8 @@ impl SpeedTest {
             let a = self.address.clone();
             let b = barrier.clone();
             let r = stop_rx.clone();
-            let (c_tx, c_rx) = watch::channel(0);
-            counters.push(c_rx);
-            tokio::spawn(async move { request_http_download(url, a, b, r, c_tx).await });
+            let c = counter.clone();
+            tokio::spawn(async move { request_http_download(url, a, b, r, c).await });
         }
 
         let mut time_interval = interval(Duration::from_millis(1000));
@@ -243,11 +239,8 @@ impl SpeedTest {
         for _i in 1..15 {
             time_interval.tick().await;
             let num = {
-                let mut count = 0;
-                for counter in counters.iter() {
-                    count += *counter.borrow();
-                }
-                count
+                let c = counter.lock().await;
+                *c
             };
             self.set_download(num);
             self.show();
@@ -260,7 +253,8 @@ impl SpeedTest {
 
     async fn upload(&mut self) -> Result<bool, Box<dyn Error>> {
         let barrier = Arc::new(Barrier::new((self.thread + 1) as usize));
-        let mut counters: Vec<Receiver<u128>> = vec![];
+        let (stop_tx, stop_rx) = watch::channel("run");
+        let counter = Arc::new(Mutex::new(0u128));
 
         let url = Url::parse(&self.upload_url)?;
 
@@ -268,9 +262,9 @@ impl SpeedTest {
             let url = url.clone();
             let a = self.address.clone();
             let b = barrier.clone();
-            let (c_tx, c_rx) = watch::channel(0);
-            counters.push(c_rx);
-            tokio::spawn(async move { request_http_upload(url, a, b, c_tx).await });
+            let r = stop_rx.clone();
+            let c = counter.clone();
+            tokio::spawn(async move { request_http_upload(url, a, b, r, c).await });
         }
 
         let mut time_interval = interval(Duration::from_millis(1000));
@@ -280,15 +274,13 @@ impl SpeedTest {
         for _i in 1..15 {
             time_interval.tick().await;
             let num = {
-                let mut count = 0;
-                for counter in counters.iter() {
-                    count += *counter.borrow();
-                }
-                count
+                let c = counter.lock().await;
+                *c
             };
             self.set_upload(num);
             self.show();
         }
+        stop_tx.send("stop")?;
         sleep(Duration::from_secs(1)).await;
 
         Ok(true)

@@ -6,10 +6,7 @@ use std::time::{Duration, Instant};
 use bytes::{BufMut, BytesMut};
 use reqwest::{header, Body, Url};
 use tokio::net::TcpStream;
-use tokio::sync::{
-    watch::{Receiver, Sender},
-    Barrier,
-};
+use tokio::sync::{watch::Receiver, Barrier, Mutex};
 
 pub async fn request_tcp_ping(host: &SocketAddr) -> Result<u128, Box<dyn Error + Send + Sync>> {
     let now = Instant::now();
@@ -23,10 +20,8 @@ pub async fn request_http_download(
     addr: SocketAddr,
     barrier: Arc<Barrier>,
     stop_rx: Receiver<&str>,
-    counter_tx: Sender<u128>,
+    counter: Arc<Mutex<u128>>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-    let mut count = 0;
-
     let domain = url.host_str().unwrap();
     let mut headers = header::HeaderMap::new();
     headers.insert(
@@ -41,13 +36,11 @@ pub async fn request_http_download(
         .build()?;
 
     let _r = barrier.wait().await;
-    let mut retry = 0;
-    while *stop_rx.borrow() != "stop" && retry < 15 {
-        retry += 1;
+    while *stop_rx.borrow() != "stop" {
         let mut stream = client.get(url.clone()).send().await?;
         while let Some(chunk) = stream.chunk().await? {
-            count += chunk.len() as u128;
-            let _r = counter_tx.send(count);
+            let mut count = counter.lock().await;
+            *count += chunk.len() as u128;
             if *stop_rx.borrow() == "stop" {
                 break;
             }
@@ -61,44 +54,46 @@ pub async fn request_http_upload(
     url: Url,
     addr: SocketAddr,
     barrier: Arc<Barrier>,
-    counter_tx: Sender<u128>,
+    stop_rx: Receiver<&str>,
+    counter: Arc<Mutex<u128>>,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-    let mut count = 0;
-    let mut data = BytesMut::new();
-    data.put(
-        "0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz-="
-            .repeat(512)
-            .as_bytes(),
-    );
-
-    let s = async_stream::stream! {
-        loop {
-            let chunk: Result<BytesMut, std::io::Error> = Ok(data.clone());
-            count += 32768;
-            let _r = counter_tx.send(count);
-            yield chunk;
-        }
-    };
-
-    let body = Body::wrap_stream(s);
+    let s = "0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz-=".repeat(512);
     let domain = url.host_str().unwrap();
     let mut headers = header::HeaderMap::new();
     headers.insert(
         header::USER_AGENT,
         header::HeaderValue::from_static("bim 1"),
     );
-    let client = reqwest::Client::builder()
-        .resolve(domain, addr)
-        .default_headers(headers)
-        .build()?;
 
     let _r = barrier.wait().await;
-    let _res = client
-        .post(url.clone())
-        .body(body)
-        .timeout(Duration::from_secs(15))
-        .send()
-        .await?;
+    while *stop_rx.borrow() != "stop" {
+        let mut data = BytesMut::new();
+        data.put(s.as_bytes());
+
+        let c = counter.clone();
+        let s = async_stream::stream! {
+            loop {
+
+                let chunk: Result<BytesMut, std::io::Error> = Ok(data.clone());
+                let mut count = c.lock().await;
+                *count += 32768;
+                yield chunk;
+            }
+        };
+
+        let body = Body::wrap_stream(s);
+        let client = reqwest::Client::builder()
+            .resolve(domain, addr)
+            .default_headers(headers.clone())
+            .build()?;
+
+        let _res = client
+            .post(url.clone())
+            .body(body)
+            .timeout(Duration::from_secs(15))
+            .send()
+            .await;
+    }
 
     Ok(true)
 }
