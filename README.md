@@ -1,3 +1,5 @@
+中文 | [English](README_en.md)
+
 # bim
 
 bim 是 bench.im 网站专用的测速客户端，提供交互式测速和后台定时测速功能，同时支持 Speedtest 和 Librespeed 的测速服务器。
