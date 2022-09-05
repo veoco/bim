@@ -37,7 +37,10 @@ pub async fn request_http_download(
 
     let _r = barrier.wait().await;
     while *stop_rx.borrow() != "stop" {
-        let mut stream = client.get(url.clone()).send().await?;
+        let mut stream = match client.get(url.clone()).send().await {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
         while let Some(chunk) = stream.chunk().await? {
             let mut count = counter.lock().await;
             *count += chunk.len() as u128;
