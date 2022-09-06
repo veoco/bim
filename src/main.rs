@@ -6,6 +6,7 @@ use base64::encode;
 use chrono::prelude::*;
 use clap::Parser;
 use log::{debug, error, info};
+use rand::prelude::*;
 use reqwest::header;
 use serde_json::Value;
 use tokio;
@@ -221,8 +222,9 @@ async fn run_forever(email_token: String) {
         }
     };
 
+    let delay = (random::<u8>() / 6) as u32;
     let utc = Utc::now();
-    let wait_minute = 60 - utc.minute();
+    let wait_minute = 60 - utc.minute() + delay;
 
     info!("Wait {} minute for task sync", wait_minute);
     sleep(Duration::from_secs((wait_minute * 60) as u64)).await;
