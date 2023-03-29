@@ -25,12 +25,13 @@ jobs:
         timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim -s 2
       
       - uses: actions/upload-artifact@v3
         with:
           name: bim-linux
-          path: target/debug/bim
+          path: |
+            target/debug/bim
+            target/debug/bimc
   
   build-windows:
     runs-on: windows-latest
@@ -48,16 +49,17 @@ jobs:
           default: true
           override: true
 
-      - name: Build and test
+      - name: Build
         timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim.exe -s 2
       
       - uses: actions/upload-artifact@v3
         with:
           name: bim-windows
-          path: target/debug/bim.exe
+          path: |
+            target/debug/bim.exe
+            target/debug/bimc.exe
   
   build-macos:
     runs-on: macos-latest
@@ -75,13 +77,14 @@ jobs:
           default: true
           override: true
 
-      - name: Build and test
+      - name: Build
         timeout-minutes: 20
         run: |
           cargo build
-          ./target/debug/bim -s 2
       
       - uses: actions/upload-artifact@v3
         with:
           name: bim-macos
-          path: target/debug/bim
+          path: |
+            target/debug/bim
+            target/debug/bimc

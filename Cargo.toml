@@ -1,29 +1,30 @@
 [package]
 name = "bim"
-version = "0.7.6"
+version = "0.15.4"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "bim"
+path = "src/server.rs"
+
+[[bin]]
+name = "bimc"
+path = "src/client.rs"
+
 [dependencies]
-rand = "0.8"
-chrono = "0.4"
+bim-core = "0"
+minreq = { version = "2", features = ["https-rustls", "json-using-serde"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
-async-stream = "0.3"
-bytes = "1"
-trust-dns-resolver = "0.21"
-machine-uid = "0.2"
-base64 = "0.13"
+getopts = "0.2"
+
 log = "0.4"
 env_logger = "0.9"
-clap = { version = "3.2", features = ["derive"] }
-reqwest = { version = "0.11", features = ["json", "stream", "native-tls-vendored"] }
-tokio = { version = "1", features = ["full"] }
-
-[target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winuser"] }
 
 [profile.release]
+opt-level = 'z'
 strip = true
 lto = true
 codegen-units = 1
