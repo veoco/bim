@@ -1,16 +1,21 @@
 mod models;
 
-pub use models::{IdMessage, MachineData, Message, ServerData, Task, TaskServer};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::thread;
+use std::time::{Duration, Instant};
 
-use bim_core::utils::SpeedTestResult;
+use url::Url;
+
+pub use models::{Machine, MachineData, Target, TcpingData, Message};
+
 use log::debug;
 
-pub fn get_machine_id(name: &str, token: &str) -> Result<IdMessage, String> {
+pub fn get_machine_id(name: &str, token: &str) -> Result<Machine, String> {
     let data = MachineData {
         name: name.to_string(),
-        token: token.to_string(),
     };
     let r = minreq::post("https://bench.im/api/machines/")
+        .with_header("X-API-Key", token)
         .with_timeout(5)
         .with_json(&data)
         .map_err(|_| "Invalid json")?
@@ -22,13 +27,13 @@ pub fn get_machine_id(name: &str, token: &str) -> Result<IdMessage, String> {
         return Err("Invalid name or token".to_string());
     }
 
-    let m = r.json::<IdMessage>().map_err(|_| "Upgrade required")?;
+    let m = r.json::<Machine>().map_err(|_| "Upgrade required")?;
     Ok(m)
 }
 
-pub fn get_tasks(machine_id: i32, token: &str) -> Result<Vec<Task>, String> {
-    let url = format!("https://bench.im/api/tasks/?token={token}&machine_id={machine_id}&status=2");
-    let r = minreq::get(&url)
+pub fn get_targets(machine_id: i32) -> Result<Vec<Target>, String> {
+    let url = format!("https://bench.im/api/machines/{machine_id}/targets/latest");
+    let r = minreq::post(&url)
         .with_timeout(5)
         .send()
         .map_err(|_| "Network error")?;
@@ -38,15 +43,21 @@ pub fn get_tasks(machine_id: i32, token: &str) -> Result<Vec<Task>, String> {
         return Err("Invalid name or token".to_string());
     }
 
-    let tasks = r.json::<Vec<Task>>().map_err(|_| "Upgrade required")?;
-    Ok(tasks)
+    let targets = r.json::<Vec<Target>>().map_err(|_| "Upgrade required")?;
+    Ok(targets)
 }
 
-pub fn finish_task(task_id: i32, token: &str, result: SpeedTestResult) -> Result<bool, String> {
-    let url = format!("https://bench.im/api/tasks/{task_id}?token={token}");
+pub fn add_target_data(
+    machine_id:i32,
+    target_id: i32,
+    token: &str,
+    data: TcpingData,
+) -> Result<bool, String> {
+    let url = format!("/machines/{machine_id}/targets/{target_id}/");
     let r = minreq::post(url)
+        .with_header("X-API-Key", token)
         .with_timeout(5)
-        .with_json(&result)
+        .with_json(&data)
         .map_err(|_| "Invalid json")?
         .send()
         .map_err(|_| "Network error")?;
@@ -60,50 +71,93 @@ pub fn finish_task(task_id: i32, token: &str, result: SpeedTestResult) -> Result
     }
 }
 
-pub fn get_ip(ipv6: bool) -> Result<String, String> {
-    let url = if ipv6 {
-        format!("http://ipv6.ip.sb")
-    } else {
-        format!("http://ipv4.ip.sb")
+fn request_tcp_ping(address: &SocketAddr) -> u128 {
+    let now = Instant::now();
+    let r = TcpStream::connect_timeout(&address, Duration::from_micros(1_000_000));
+    let used = now.elapsed().as_micros();
+    match r {
+        Ok(_) => used,
+        Err(_e) => {
+            #[cfg(debug_assertions)]
+            debug!("Ping {_e}");
+
+            0
+        }
+    }
+}
+
+fn get_address(url: &Url, ipv6: bool) -> Option<SocketAddr> {
+    let host = match url.host_str() {
+        Some(h) => h,
+        None => return None,
+    };
+    let port = match url.port_or_known_default() {
+        Some(p) => p,
+        None => return None,
     };
 
-    let r = minreq::get(url)
-        .with_header("User-Agent", "curl/7.74.0")
-        .with_header("Accept", "*/*")
-        .with_timeout(5)
-        .send()
-        .map_err(|_| "Network error")?;
+    let host_port = format!("{host}:{port}");
+    let addresses = match host_port.to_socket_addrs() {
+        Ok(addrs) => addrs,
+        Err(_) => return None,
+    };
 
-    let res = r.as_str().map_err(|_| "Upgrade required")?.to_string();
-    if r.status_code == 200 {
-        let ip = res.trim_end();
-        Ok(ip.to_string())
-    } else {
-        Err(format!("{}", r.status_code))
+    let mut address = None;
+    for addr in addresses {
+        if (addr.is_ipv6() && ipv6) || (addr.is_ipv4() && !ipv6) {
+            address = Some(addr);
+        }
     }
+
+    address
 }
 
-pub fn mask_ipv4(ipv4: &str) -> String {
-    let parts: Vec<&str> = ipv4.split(" ").collect();
-    format!("{}.*.*.{}", parts[0], parts[parts.len() - 1])
-}
+pub fn test_tcp_pings(url: String, ipv6: bool) -> Option<TcpingData> {
+    let mut count = 0;
+    let mut pings = [0u128; 20];
+    let mut ping_min = 10000000;
 
-pub fn create_server(data: ServerData) -> Result<bool, String> {
-    debug!("Data: {data:?}");
+    let url = match Url::parse(&url) {
+        Ok(u) => u,
+        Err(_) => return None,
+    };
 
-    let url = format!("https://bench.im/api/servers/");
-    let r = minreq::post(url)
-        .with_timeout(5)
-        .with_json(&data)
-        .map_err(|_| "Invalid json")?
-        .send()
-        .map_err(|_| "Network error")?;
+    let address = match get_address(&url, ipv6) {
+        Some(a) => a,
+        None => return None,
+    };
 
-    debug!("Status code: {}", r.status_code);
-    let _ = r.json::<IdMessage>().map_err(|_| "Upgrade required")?;
-    if r.status_code == 201 {
-        Ok(true)
-    } else {
-        Err(format!("{} {:?}", r.status_code, r.as_str()))
+    while count < 20 {
+        let ping = request_tcp_ping(&address);
+        if ping > 0 {
+            if ping < ping_min {
+                ping_min = ping
+            }
+            pings[count] = ping;
+        }
+        thread::sleep(Duration::from_millis(1000));
+        count += 1;
     }
+
+    let mut failed = 0;
+    let mut jitter_all = 0;
+    for p in pings {
+        if p > 0 {
+            jitter_all += p - ping_min;
+        } else {
+            failed += 1;
+        }
+    }
+
+    let ping_min = ping_min as f64 / 1_000.0;
+    let ping_jitter = jitter_all as f64 / (20 - failed) as f64 / 1_000.0;
+
+    #[cfg(debug_assertions)]
+    debug!("Ping {ping_min} ms, Jitter {ping_jitter} ms, Failed {failed}/20");
+
+    Some(TcpingData {
+        ping_min,
+        ping_jitter,
+        failed,
+    })
 }
