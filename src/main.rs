@@ -13,11 +13,12 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn run(token: &str, machine_id: i32) {
-    let mut last = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
     loop {
+        let start = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
         let targets = match get_targets(machine_id, token) {
             Ok(t) => t,
             Err(e) => {
@@ -47,9 +48,8 @@ fn run(token: &str, machine_id: i32) {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let time_sleep = 300 - (now - last);
+        let time_sleep = 300 - (now - start);
 
-        last = now;
         info!("Wait: {time_sleep}s");
         thread::sleep(Duration::from_secs(time_sleep));
     }
