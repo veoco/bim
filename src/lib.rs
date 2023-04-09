@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use url::Url;
 
-pub use models::{Machine, MachineData, Target, TcpingData, Message};
+pub use models::{Machine, MachineData, Message, Target, TcpingData};
 
 use log::debug;
 
@@ -31,9 +31,10 @@ pub fn get_machine_id(name: &str, token: &str) -> Result<Machine, String> {
     Ok(m)
 }
 
-pub fn get_targets(machine_id: i32) -> Result<Vec<Target>, String> {
-    let url = format!("https://bench.im/api/machines/{machine_id}/targets/latest");
+pub fn get_targets(machine_id: i32, token: &str) -> Result<Vec<Target>, String> {
+    let url = format!("https://bench.im/api/machines/{machine_id}/targets/worker");
     let r = minreq::post(&url)
+        .with_header("X-API-Key", token)
         .with_timeout(5)
         .send()
         .map_err(|_| "Network error")?;
@@ -48,12 +49,12 @@ pub fn get_targets(machine_id: i32) -> Result<Vec<Target>, String> {
 }
 
 pub fn add_target_data(
-    machine_id:i32,
+    machine_id: i32,
     target_id: i32,
     token: &str,
     data: TcpingData,
 ) -> Result<bool, String> {
-    let url = format!("/machines/{machine_id}/targets/{target_id}/");
+    let url = format!("https://bench.im/api/machines/{machine_id}/targets/{target_id}/");
     let r = minreq::post(url)
         .with_header("X-API-Key", token)
         .with_timeout(5)
@@ -139,25 +140,25 @@ pub fn test_tcp_pings(url: String, ipv6: bool) -> Option<TcpingData> {
         count += 1;
     }
 
-    let mut failed = 0;
+    let mut ping_failed = 0;
     let mut jitter_all = 0;
     for p in pings {
         if p > 0 {
             jitter_all += p - ping_min;
         } else {
-            failed += 1;
+            ping_failed += 1;
         }
     }
 
     let ping_min = ping_min as f64 / 1_000.0;
-    let ping_jitter = jitter_all as f64 / (20 - failed) as f64 / 1_000.0;
+    let ping_jitter = jitter_all as f64 / (20 - ping_failed) as f64 / 1_000.0;
 
     #[cfg(debug_assertions)]
-    debug!("Ping {ping_min} ms, Jitter {ping_jitter} ms, Failed {failed}/20");
+    debug!("Ping {ping_min} ms, Jitter {ping_jitter} ms, Failed {ping_failed}/20");
 
     Some(TcpingData {
         ping_min,
         ping_jitter,
-        failed,
+        ping_failed,
     })
 }

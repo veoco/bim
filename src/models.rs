@@ -21,7 +21,7 @@ pub struct Target {
 pub struct TcpingData {
     pub ping_min: f64,
     pub ping_jitter: f64,
-    pub failed: i32,
+    pub ping_failed: i32,
 }
 
 #[derive(Serialize, Deserialize)]
