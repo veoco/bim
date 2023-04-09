@@ -50,8 +50,8 @@ fn run(token: &str, machine_id: i32) {
         let time_sleep = 300 - (now - last);
 
         last = now;
+        info!("Wait: {time_sleep}s");
         thread::sleep(Duration::from_secs(time_sleep));
-        info!("Wait: {time_sleep}s")
     }
 }
 
