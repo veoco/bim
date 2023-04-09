@@ -31,7 +31,6 @@ jobs:
           name: bim-linux
           path: |
             target/debug/bim
-            target/debug/bimc
   
   build-windows:
     runs-on: windows-latest
@@ -59,7 +58,6 @@ jobs:
           name: bim-windows
           path: |
             target/debug/bim.exe
-            target/debug/bimc.exe
   
   build-macos:
     runs-on: macos-latest
@@ -87,4 +85,3 @@ jobs:
           name: bim-macos
           path: |
             target/debug/bim
-            target/debug/bimc
