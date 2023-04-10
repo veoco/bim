@@ -31,8 +31,8 @@ pub fn get_machine_id(name: &str, token: &str) -> Result<Machine, String> {
     Ok(m)
 }
 
-pub fn get_targets(machine_id: i32, token: &str) -> Result<Vec<Target>, String> {
-    let url = format!("https://bench.im/api/machines/{machine_id}/targets/worker");
+pub fn get_targets(token: &str) -> Result<Vec<Target>, String> {
+    let url = format!("https://bench.im/api/targets/worker");
     let r = minreq::post(&url)
         .with_header("X-API-Key", token)
         .with_timeout(5)

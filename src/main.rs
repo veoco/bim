@@ -19,7 +19,7 @@ fn run(token: &str, machine_id: i32) {
             .unwrap()
             .as_secs();
 
-        let targets = match get_targets(machine_id, token) {
+        let targets = match get_targets(token) {
             Ok(t) => t,
             Err(e) => {
                 info!("Get targets failed: {e}");
@@ -35,13 +35,13 @@ fn run(token: &str, machine_id: i32) {
             if let Some(data) = test_tcp_pings(url, ipv6) {
                 match add_target_data(machine_id, target_id, token, data) {
                     Ok(_) => {
-                        info!("Add {target_id} success")
+                        info!("{target_id} success")
                     }
                     Err(e) => info!("Add failed: {e}"),
                 }
             };
 
-            thread::sleep(Duration::from_secs(1));
+            thread::sleep(Duration::from_millis(250));
         }
 
         let now = SystemTime::now()
