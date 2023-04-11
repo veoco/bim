@@ -1,9 +1,11 @@
 use std::env;
-use std::thread;
-use std::time::{Duration, SystemTime};
+use std::sync::Arc;
+use std::time::Duration;
 
 use getopts::Options;
 use log::{debug, info};
+use tokio::sync::Semaphore;
+use tokio::time;
 
 use bim::{add_target_data, get_machine_id, get_targets, test_tcp_pings};
 
@@ -12,46 +14,60 @@ fn print_usage(program: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn run(token: &str, machine_id: i32) {
+#[tokio::main]
+async fn run(token: &str, name: &str) {
+    let mut interval = time::interval(Duration::from_secs(300));
+    let semaphore = Arc::new(Semaphore::new(4));
+
     loop {
-        let start = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        info!("Waiting for next tick");
+        interval.tick().await;
+
+        let machine_id = match get_machine_id(name, token) {
+            Ok(m) => {
+                let mid = m.id;
+                info!("Machine id: {mid}");
+                mid
+            }
+            Err(e) => {
+                info!("Get machine id failed: {e}");
+                continue;
+            }
+        };
 
         let targets = match get_targets(token) {
             Ok(t) => t,
             Err(e) => {
                 info!("Get targets failed: {e}");
-                vec![]
+                continue;
             }
         };
 
+        let count = targets.len();
+        info!("Testing {count} targets");
+
+        let mut tasks = vec![];
+
         for target in targets {
             let target_id = target.id;
-            let url = target.url;
+            let url = target.url.clone();
             let ipv6 = target.ipv6;
+            let s = semaphore.clone();
 
-            if let Some(data) = test_tcp_pings(url, ipv6) {
-                match add_target_data(machine_id, target_id, token, data) {
-                    Ok(_) => {
-                        info!("{target_id} success")
-                    }
-                    Err(e) => info!("Add failed: {e}"),
-                }
-            };
+            let task = tokio::spawn(async move { test_tcp_pings(url, ipv6, s).await });
 
-            thread::sleep(Duration::from_millis(250));
+            tasks.push((target_id, task))
         }
 
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let time_sleep = 300 - (now - start);
+        let mut success = 0;
+        for (target_id, task) in tasks {
+            if let Ok(Some(data)) = task.await {
+                success += 1;
+                add_target_data(machine_id, target_id, token, data);
+            };
+        }
 
-        info!("Wait: {time_sleep}s");
-        thread::sleep(Duration::from_secs(time_sleep));
+        info!("Finished {success}/{count} targets")
     }
 }
 
@@ -89,15 +105,8 @@ fn main() {
     };
 
     env_logger::init();
-    debug!("Name {name} token {token}");
+    debug!("API Token: {token}");
+    info!("Running Machine: {name}");
 
-    let machine_id = match get_machine_id(&name, token) {
-        Ok(m) => m.id,
-        Err(e) => {
-            println!("{e}");
-            return;
-        }
-    };
-
-    run(token, machine_id)
+    run(token, &name)
 }

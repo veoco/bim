@@ -1,14 +1,17 @@
 mod models;
 
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::thread;
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tokio::net::TcpStream;
+use tokio::sync::Semaphore;
+use tokio::time;
 use url::Url;
 
 pub use models::{Machine, MachineData, Message, Target, TcpingData};
 
-use log::debug;
+use log::{debug, info};
 
 pub fn get_machine_id(name: &str, token: &str) -> Result<Machine, String> {
     let data = MachineData {
@@ -48,42 +51,44 @@ pub fn get_targets(token: &str) -> Result<Vec<Target>, String> {
     Ok(targets)
 }
 
-pub fn add_target_data(
-    machine_id: i32,
-    target_id: i32,
-    token: &str,
-    data: TcpingData,
-) -> Result<bool, String> {
+pub fn add_target_data(machine_id: i32, target_id: i32, token: &str, data: TcpingData) {
     let url = format!("https://bench.im/api/machines/{machine_id}/targets/{target_id}/");
-    let r = minreq::post(url)
-        .with_header("X-API-Key", token)
-        .with_timeout(5)
-        .with_json(&data)
-        .map_err(|_| "Invalid json")?
-        .send()
-        .map_err(|_| "Network error")?;
 
-    debug!("Status code: {}", r.status_code);
-    let res = r.json::<Message>().map_err(|_| "Upgrade required")?;
-    if r.status_code == 200 {
-        Ok(true)
-    } else {
-        Err(res.msg)
-    }
-}
+    let mut retry = 3;
 
-fn request_tcp_ping(address: &SocketAddr) -> u128 {
-    let now = Instant::now();
-    let r = TcpStream::connect_timeout(&address, Duration::from_micros(1_000_000));
-    let used = now.elapsed().as_micros();
-    match r {
-        Ok(_) => used,
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            debug!("Ping {_e}");
+    while retry > 0 {
+        let request = match minreq::post(&url)
+            .with_header("X-API-Key", token)
+            .with_timeout(5)
+            .with_json(&data)
+        {
+            Ok(r) => r,
+            Err(e) => {
+                debug!("Add target data failed: {e}");
+                return;
+            }
+        };
 
-            0
-        }
+        let response = match request.send() {
+            Ok(r) => r,
+            Err(e) => {
+                debug!("Add target data failed: {e}");
+                retry -= 1;
+                continue;
+            }
+        };
+
+        debug!("Status code: {}", response.status_code);
+        match response.json::<Message>(){
+            Ok(_)=> {
+                debug!("Add target {target_id} data success");
+            },
+            Err(e)=> {
+                debug!("Add target data failed: {e}");
+                info!("Upgrade required");
+            }
+        };
+        return
     }
 }
 
@@ -113,7 +118,45 @@ fn get_address(url: &Url, ipv6: bool) -> Option<SocketAddr> {
     address
 }
 
-pub fn test_tcp_pings(url: String, ipv6: bool) -> Option<TcpingData> {
+async fn request_tcp_ping(address: &SocketAddr, s: Arc<Semaphore>) -> u128 {
+    let _permit = match s.acquire().await {
+        Ok(p) => p,
+        _ => {
+            #[cfg(debug_assertions)]
+            debug!("Acquire semaphore failed");
+
+            return 0;
+        }
+    };
+
+    let now = Instant::now();
+
+    let r = time::timeout(
+        Duration::from_micros(1_000_000),
+        TcpStream::connect(&address),
+    )
+    .await;
+
+    let used = now.elapsed().as_micros();
+
+    match r {
+        Ok(Ok(_)) => used,
+        Ok(Err(_e)) => {
+            #[cfg(debug_assertions)]
+            debug!("Ping {_e}");
+
+            0
+        }
+        Err(_) => {
+            #[cfg(debug_assertions)]
+            debug!("Ping timeout");
+
+            0
+        }
+    }
+}
+
+pub async fn test_tcp_pings(url: String, ipv6: bool, s: Arc<Semaphore>) -> Option<TcpingData> {
     let mut count = 0;
     let mut pings = [0u128; 20];
     let mut ping_min = 10000000;
@@ -129,14 +172,13 @@ pub fn test_tcp_pings(url: String, ipv6: bool) -> Option<TcpingData> {
     };
 
     while count < 20 {
-        let ping = request_tcp_ping(&address);
+        let ping = request_tcp_ping(&address, s.clone()).await;
         if ping > 0 {
             if ping < ping_min {
                 ping_min = ping
             }
             pings[count] = ping;
         }
-        thread::sleep(Duration::from_millis(1000));
         count += 1;
     }
 
