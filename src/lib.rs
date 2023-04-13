@@ -79,16 +79,16 @@ pub fn add_target_data(machine_id: i32, target_id: i32, token: &str, data: Tcpin
         };
 
         debug!("Status code: {}", response.status_code);
-        match response.json::<Message>(){
-            Ok(_)=> {
+        match response.json::<Message>() {
+            Ok(_) => {
                 debug!("Add target {target_id} data success");
-            },
-            Err(e)=> {
+            }
+            Err(e) => {
                 debug!("Add target data failed: {e}");
                 info!("Upgrade required");
             }
         };
-        return
+        return;
     }
 }
 
@@ -189,6 +189,9 @@ pub async fn test_tcp_pings(url: String, ipv6: bool, s: Arc<Semaphore>) -> Optio
         }
     }
 
+    if ping_min == 10000000 {
+        return None;
+    }
     let ping_min = ping_min as f64 / 1_000.0;
     let ping_jitter = jitter_all as f64 / (20 - ping_failed) as f64 / 1_000.0;
 
