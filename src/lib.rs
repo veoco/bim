@@ -122,7 +122,6 @@ async fn request_tcp_ping(address: &SocketAddr, s: Arc<Semaphore>) -> u128 {
     let _permit = match s.acquire().await {
         Ok(p) => p,
         _ => {
-            #[cfg(debug_assertions)]
             debug!("Acquire semaphore failed");
 
             return 0;
@@ -142,13 +141,11 @@ async fn request_tcp_ping(address: &SocketAddr, s: Arc<Semaphore>) -> u128 {
     match r {
         Ok(Ok(_)) => used,
         Ok(Err(_e)) => {
-            #[cfg(debug_assertions)]
             debug!("Ping {_e}");
 
             0
         }
         Err(_) => {
-            #[cfg(debug_assertions)]
             debug!("Ping timeout");
 
             0
@@ -195,7 +192,6 @@ pub async fn test_tcp_pings(url: String, ipv6: bool, s: Arc<Semaphore>) -> Optio
     let ping_min = ping_min as f64 / 1_000.0;
     let ping_jitter = jitter_all as f64 / (20 - ping_failed) as f64 / 1_000.0;
 
-    #[cfg(debug_assertions)]
     debug!("Ping {ping_min} ms, Jitter {ping_jitter} ms, Failed {ping_failed}/20");
 
     Some(TcpingData {
