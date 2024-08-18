@@ -17,7 +17,7 @@ pub fn get_machine_id(name: &str, token: &str) -> Result<Machine, String> {
     let data = MachineData {
         name: name.to_string(),
     };
-    let r = minreq::post("https://bench.im/api/machines/")
+    let r = minreq::get("https://bench.im/api/machines/")
         .with_header("X-API-Key", token)
         .with_timeout(5)
         .with_json(&data)
@@ -36,7 +36,7 @@ pub fn get_machine_id(name: &str, token: &str) -> Result<Machine, String> {
 
 pub fn get_targets(token: &str) -> Result<Vec<Target>, String> {
     let url = format!("https://bench.im/api/targets/worker");
-    let r = minreq::post(&url)
+    let r = minreq::get(&url)
         .with_header("X-API-Key", token)
         .with_timeout(5)
         .send()
