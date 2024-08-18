@@ -17,7 +17,7 @@ pub fn get_machine_id(name: &str, token: &str) -> Result<Machine, String> {
     let data = MachineData {
         name: name.to_string(),
     };
-    let r = minreq::get("https://bench.im/api/machines/")
+    let r = minreq::post("https://bench.im/api/machines/")
         .with_header("X-API-Key", token)
         .with_timeout(5)
         .with_json(&data)
