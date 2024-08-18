@@ -24,13 +24,13 @@ jobs:
       - name: Build and test
         timeout-minutes: 20
         run: |
-          cargo build
+          cargo build -r
       
       - uses: actions/upload-artifact@v3
         with:
           name: bim-linux
           path: |
-            target/debug/bim
+            target/release/bim
   
   build-windows:
     runs-on: windows-latest
@@ -51,13 +51,13 @@ jobs:
       - name: Build
         timeout-minutes: 20
         run: |
-          cargo build
+          cargo build -r
       
       - uses: actions/upload-artifact@v3
         with:
           name: bim-windows
           path: |
-            target/debug/bim.exe
+            target/release/bim.exe
   
   build-macos:
     runs-on: macos-latest
@@ -78,10 +78,10 @@ jobs:
       - name: Build
         timeout-minutes: 20
         run: |
-          cargo build
+          cargo build -r
       
       - uses: actions/upload-artifact@v3
         with:
           name: bim-macos
           path: |
-            target/debug/bim
+            target/release/bim
