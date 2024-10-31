@@ -9,6 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: full
+    
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
 
     steps:
       - uses: actions/checkout@v2
@@ -16,22 +22,40 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          profile: minimal
+          target: ${{ matrix.target }}
           toolchain: nightly
           default: true
           override: true
-
-      - name: Build and test
-        timeout-minutes: 20
-        run: |
-          cargo build -r
       
-      - uses: actions/upload-artifact@v3
+      - name: Install cross
+        run: cargo install cross
+
+      - name: Build ${{ matrix.target }}
+        timeout-minutes: 15
+        run: |
+          mkdir -p ./build/release
+          cross build --target ${{ matrix.target }} -r
+          cp ./target/${{ matrix.target }}/release/bim ./build/release/bim-${{ matrix.target }}
+      
+      - name: UPX
+        uses: crazy-max/ghaction-upx@v2
         with:
-          name: bim-linux
-          path: |
-            target/release/bim
-  
+          version: latest
+          files: |
+            ./build/release/bim-${{ matrix.target }}
+          args: --best --lzma
+      
+      - name: sha256
+        run: |
+          cd ./build/release
+          shasum -a 256 bim-${{ matrix.target }} > bim-${{ matrix.target }}.sha256
+    
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: bim
+          path: build/release/*
+
   build-windows:
     runs-on: windows-latest
     env:
@@ -49,16 +73,20 @@ jobs:
           override: true
 
       - name: Build
-        timeout-minutes: 20
+        timeout-minutes: 15
         run: |
           cargo build -r
-      
-      - uses: actions/upload-artifact@v3
+          mkdir -p ./build/release
+          cp ./target/release/bim.exe ./build/release/bim.exe
+          cd ./build/release
+          Get-FileHash bim.exe | Format-List > bim.exe.sha256
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
         with:
-          name: bim-windows
-          path: |
-            target/release/bim.exe
-  
+          name: bim
+          path: build/release/*
+    
   build-macos:
     runs-on: macos-latest
     env:
@@ -76,12 +104,16 @@ jobs:
           override: true
 
       - name: Build
-        timeout-minutes: 20
+        timeout-minutes: 120
         run: |
           cargo build -r
-      
-      - uses: actions/upload-artifact@v3
+          mkdir -p ./build/release
+          cp ./target/release/bim ./build/release/bim-macos
+          cd ./build/release
+          shasum -a 256 bim-macos > bim-macos.sha256
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
         with:
-          name: bim-macos
-          path: |
-            target/release/bim
+          name: bim
+          path: build/release/*

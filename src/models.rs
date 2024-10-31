@@ -13,15 +13,18 @@ pub struct Machine {
 #[derive(Serialize, Deserialize)]
 pub struct Target {
     pub id: i32,
-    pub url: String,
-    pub ipv6: bool,
+    pub name: String,
+    pub domain: Option<String>,
+    pub ipv4: Option<String>,
+    pub ipv6: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct TcpingData {
-    pub ping_min: f64,
-    pub ping_jitter: f64,
-    pub ping_failed: i32,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PingData {
+    pub ipv6: bool,
+    pub min: f64,
+    pub jitter: f64,
+    pub failed: i32,
 }
 
 #[derive(Serialize, Deserialize)]
