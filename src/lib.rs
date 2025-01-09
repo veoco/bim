@@ -1,6 +1,7 @@
 mod models;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use regex::Regex;
 use tokio::process::Command;
@@ -10,46 +11,109 @@ pub use models::{Machine, MachineData, Message, PingData, Target};
 
 use log::{debug, info};
 
-pub fn get_machine_id(name: &str, token: &str, server_url: &str) -> Result<Machine, String> {
-    let data = MachineData {
-        name: name.to_string(),
-    };
-    let url = format!("{server_url}/api/client/machines/");
-    debug!("Url: {url}");
-
-    let r = minreq::post(url)
-        .with_header("Authorization", format!("Bearer {token}"))
-        .with_timeout(5)
-        .with_json(&data)
-        .map_err(|_| "Invalid json")?
-        .send()
-        .map_err(|_| "Network error")?;
-
-    debug!("Status code: {}", r.status_code);
-    if r.status_code != 201 {
-        debug!("Content: {:?}", r.as_str());
-        return Err("Invalid name or token".to_string());
-    }
-
-    let m = r.json::<Machine>().map_err(|_| "Upgrade required")?;
-    Ok(m)
+pub struct BimClient {
+    pub name: String,
+    pub token: String,
+    pub server_url: String,
+    pub machine_id: i32,
+    pub client: reqwest::Client,
 }
 
-pub fn get_targets(token: &str, server_url: &str) -> Result<Vec<Target>, String> {
-    let url = format!("{server_url}/api/client/targets/");
-    let r = minreq::get(&url)
-        .with_header("Authorization", format!("Bearer {token}"))
-        .with_timeout(5)
-        .send()
-        .map_err(|_| "Network error")?;
+impl BimClient {
+    pub async fn new(name: String, token: String, server_url: String) -> Result<Self, String> {
+        let client = reqwest::Client::new();
 
-    debug!("Status code: {}", r.status_code);
-    if r.status_code != 200 {
-        return Err("Invalid name or token".to_string());
+        let data = MachineData {
+            name: name.to_string(),
+        };
+        let url = format!("{server_url}/api/client/machines/");
+        debug!("Url: {url}");
+
+        let r = client
+            .post(url)
+            .bearer_auth(&token)
+            .timeout(Duration::from_secs(5))
+            .json(&data)
+            .send()
+            .await
+            .map_err(|_| "Network error")?;
+
+        debug!("Status code: {}", r.status());
+        if r.status() != 201 {
+            debug!("Content: {:?}", r.text().await);
+            return Err("Invalid name or token".to_string());
+        }
+
+        let m = r.json::<Machine>().await.map_err(|_| "Upgrade required")?;
+        let machine_id = m.id;
+        info!("Machine id: {machine_id}");
+
+        Ok(Self {
+            name,
+            token,
+            server_url,
+            machine_id,
+            client,
+        })
     }
 
-    let targets = r.json::<Vec<Target>>().map_err(|_| "Upgrade required")?;
-    Ok(targets)
+    pub async fn get_targets(&self) -> Result<Vec<Target>, String> {
+        let url = format!("{}/api/client/targets/", self.server_url);
+        let r = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.token)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .map_err(|_| "Network error")?;
+
+        debug!("Status code: {}", r.status());
+        if r.status() != 200 {
+            return Err("Invalid name or token".to_string());
+        }
+
+        let targets = r
+            .json::<Vec<Target>>()
+            .await
+            .map_err(|_| "Upgrade required")?;
+        Ok(targets)
+    }
+
+    pub async fn post_target_data(&self, target_id: i32, data: PingData) {
+        let url = format!(
+            "{}/api/client/machines/{}/targets/{}",
+            self.server_url, self.machine_id, target_id
+        );
+
+        let r = match self
+            .client
+            .post(&url)
+            .bearer_auth(&self.token)
+            .timeout(Duration::from_secs(5))
+            .json(&data)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                debug!("Add target data failed: {e}");
+                return;
+            }
+        };
+
+        debug!("Status code: {}", r.status());
+        match r.json::<Message>().await {
+            Ok(_) => {
+                debug!("Add target {target_id} data success");
+            }
+            Err(e) => {
+                debug!("Add target data failed: {e}");
+                info!("Upgrade required");
+            }
+        };
+        return;
+    }
 }
 
 pub async fn ping(target: String, ipv6: bool, s: Arc<Semaphore>) -> Option<PingData> {
@@ -133,51 +197,4 @@ pub async fn ping(target: String, ipv6: bool, s: Arc<Semaphore>) -> Option<PingD
         jitter: ping_jitter,
         failed: ping_failed,
     })
-}
-
-pub fn add_target_data(
-    machine_id: i32,
-    target_id: i32,
-    token: &str,
-    server_url: &str,
-    data: PingData,
-) {
-    let url = format!("{server_url}/api/client/machines/{machine_id}/targets/{target_id}");
-
-    let mut retry = 3;
-
-    while retry > 0 {
-        let request = match minreq::post(&url)
-            .with_header("Authorization", format!("Bearer {token}"))
-            .with_timeout(5)
-            .with_json(&data)
-        {
-            Ok(r) => r,
-            Err(e) => {
-                debug!("Add target data failed: {e}");
-                return;
-            }
-        };
-
-        let response = match request.send() {
-            Ok(r) => r,
-            Err(e) => {
-                debug!("Add target data failed: {e}");
-                retry -= 1;
-                continue;
-            }
-        };
-
-        debug!("Status code: {}", response.status_code);
-        match response.json::<Message>() {
-            Ok(_) => {
-                debug!("Add target {target_id} data success");
-            }
-            Err(e) => {
-                debug!("Add target data failed: {e}");
-                info!("Upgrade required");
-            }
-        };
-        return;
-    }
 }

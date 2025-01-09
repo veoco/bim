@@ -7,7 +7,7 @@ use log::{debug, info};
 use tokio::sync::Semaphore;
 use tokio::time;
 
-use bim::{add_target_data, get_machine_id, get_targets, ping};
+use bim::{ping, BimClient};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -77,19 +77,15 @@ async fn run(name: String, token: String, server_url: String) {
         info!("Waiting for next tick");
         interval.tick().await;
 
-        let machine_id = match get_machine_id(&name, &token, &server_url) {
-            Ok(m) => {
-                let mid = m.id;
-                info!("Machine id: {mid}");
-                mid
-            }
+        let c = match BimClient::new(name.clone(), token.clone(), server_url.clone()).await {
+            Ok(c) => Arc::new(c),
             Err(e) => {
-                info!("Get machine id failed: {e}");
+                info!("Connect failed: {e}");
                 continue;
             }
         };
 
-        let targets = match get_targets(&token, &server_url) {
+        let targets = match c.get_targets().await {
             Ok(t) => t,
             Err(e) => {
                 info!("Get targets failed: {e}");
@@ -136,11 +132,8 @@ async fn run(name: String, token: String, server_url: String) {
 
         for (target_id, task) in tasks {
             if let Ok(Some(data)) = task.await {
-                let token = token.clone();
-                let server_url = server_url.clone();
-                tokio::spawn(async move {
-                    add_target_data(machine_id, target_id, &token, &server_url, data)
-                });
+                let cc = c.clone();
+                tokio::spawn(async move { cc.post_target_data(target_id, data).await });
             };
         }
 
