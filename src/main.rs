@@ -26,7 +26,7 @@ fn main() {
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
         Err(f) => {
-            println!("{}\n", f.to_string());
+            print!("{}\n", f.to_string());
             print_usage(&program, opts);
             return;
         }
@@ -65,10 +65,9 @@ fn main() {
     debug!("API Token: {token}");
     info!("Running Machine: {name}");
 
-    run(name, token, server_url);
+    tokio::spawn(run(name, token, server_url));
 }
 
-#[tokio::main]
 async fn run(name: String, token: String, server_url: String) {
     let mut interval = time::interval(Duration::from_secs(300));
     let semaphore = Arc::new(Semaphore::new(8));
@@ -100,41 +99,42 @@ async fn run(name: String, token: String, server_url: String) {
 
         for target in targets {
             let target_id = target.id;
+            let s = semaphore.clone();
+            let cc = c.clone();
 
             if target.domain.is_some() {
                 let domain = target.domain.unwrap();
 
                 let target = domain.clone();
-                let s = semaphore.clone();
-                let task = tokio::spawn(async move { ping(target, false, s).await });
-                tasks.push((target_id, task));
+                let task = tokio::spawn(async move { ping(target, false, s, target_id, cc).await });
+                tasks.push(task);
 
                 let s = semaphore.clone();
+                let cc = c.clone();
                 let target = domain.clone();
-                let task = tokio::spawn(async move { ping(target, true, s).await });
-                tasks.push((target_id, task));
+                let task = tokio::spawn(async move { ping(target, true, s, target_id, cc).await });
+                tasks.push(task);
             } else {
                 if let Some(ipv4) = target.ipv4 {
-                    let s = semaphore.clone();
-                    let task = tokio::spawn(async move { ping(ipv4, false, s).await });
-                    tasks.push((target_id, task));
+                    let task =
+                        tokio::spawn(async move { ping(ipv4, false, s, target_id, cc).await });
+                    tasks.push(task);
                 }
 
                 if let Some(ipv6) = target.ipv6 {
                     let s = semaphore.clone();
-                    let task = tokio::spawn(async move { ping(ipv6, true, s).await });
-                    tasks.push((target_id, task));
+                    let cc = c.clone();
+                    let task =
+                        tokio::spawn(async move { ping(ipv6, true, s, target_id, cc).await });
+                    tasks.push(task);
                 }
             }
         }
 
         let task_count = tasks.len();
-
-        for (target_id, task) in tasks {
-            if let Ok(Some(data)) = task.await {
-                let cc = c.clone();
-                tokio::spawn(async move { cc.post_target_data(target_id, data).await });
-            };
+        info!("Waiting for {task_count} tasks to finish");
+        for t in tasks {
+            let _ = t.await;
         }
 
         info!("Finished {task_count} tasks")

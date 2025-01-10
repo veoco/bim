@@ -116,13 +116,19 @@ impl BimClient {
     }
 }
 
-pub async fn ping(target: String, ipv6: bool, s: Arc<Semaphore>) -> Option<PingData> {
-    let _permit = match s.acquire().await {
+pub async fn ping(
+    target: String,
+    ipv6: bool,
+    s: Arc<Semaphore>,
+    target_id: i32,
+    cc: Arc<BimClient>,
+) {
+    let permit = match s.acquire().await {
         Ok(p) => p,
         _ => {
             debug!("Acquire semaphore failed");
 
-            return None;
+            return;
         }
     };
 
@@ -149,6 +155,8 @@ pub async fn ping(target: String, ipv6: bool, s: Arc<Semaphore>) -> Option<PingD
         .await
         .expect("Failed to execute ping command");
 
+    drop(permit);
+
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let mut ping_times = Vec::new();
     let mut ping_success = 0;
@@ -171,7 +179,7 @@ pub async fn ping(target: String, ipv6: bool, s: Arc<Semaphore>) -> Option<PingD
     }
 
     if ping_success == 0 {
-        return None;
+        return;
     }
 
     let ping_min = ping_times
@@ -191,10 +199,12 @@ pub async fn ping(target: String, ipv6: bool, s: Arc<Semaphore>) -> Option<PingD
 
     let ping_failed = 20 - ping_success;
 
-    Some(PingData {
+    let data = PingData {
         ipv6,
         min: ping_min,
         jitter: ping_jitter,
         failed: ping_failed,
-    })
+    };
+
+    cc.post_target_data(target_id, data).await
 }
