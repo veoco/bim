@@ -65,9 +65,10 @@ fn main() {
     debug!("API Token: {token}");
     info!("Running Machine: {name}");
 
-    tokio::spawn(run(name, token, server_url));
+    run(name, token, server_url);
 }
 
+#[tokio::main]
 async fn run(name: String, token: String, server_url: String) {
     let mut interval = time::interval(Duration::from_secs(300));
     let semaphore = Arc::new(Semaphore::new(8));
