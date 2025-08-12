@@ -165,7 +165,7 @@ pub async fn ping(
     let mut line_count = 0;
     for line in stdout.lines() {
         if let Some(caps) = time_regex.captures(line) {
-            if let Ok(time) = caps[1].parse::<i32>() {
+            if let Ok(time) = caps[1].parse::<u16>() {
                 ping_times.push(time);
                 ping_success += 1;
             }
@@ -182,36 +182,15 @@ pub async fn ping(
         return;
     }
 
-    let ping_min = ping_times
-        .iter()
-        .copied()
-        .min_by(|a, b| a.partial_cmp(b).unwrap())
-        .unwrap_or(0);
-
-    let ping_jitter = if ping_times.len() > 1 {
-        let mean = ping_times.iter().map(|&x| x as f32).sum::<f32>() / ping_times.len() as f32;
-
-        let variance = ping_times
-            .iter()
-            .map(|&x| {
-                let diff = x as f32 - mean;
-                diff.powi(2)
-            })
-            .sum::<f32>()
-            / (ping_times.len() as f32 - 1.0);
-
-        variance.sqrt().round() as i32
-    } else {
-        0
-    };
-
-    let ping_failed = 20 - ping_success;
+    let ping_min = ping_times.iter().min().cloned().unwrap_or(0);
+    let ping_avg = ping_times.iter().sum::<u16>() / ping_success as u16;
+    let ping_fail = 20 - ping_success;
 
     let data = PingData {
         ipv6,
         min: ping_min,
-        jitter: ping_jitter,
-        failed: ping_failed,
+        avg: ping_avg,
+        fail: ping_fail,
     };
 
     cc.post_target_data(target_id, data).await

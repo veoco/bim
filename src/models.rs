@@ -22,9 +22,9 @@ pub struct Target {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PingData {
     pub ipv6: bool,
-    pub min: i32,
-    pub jitter: i32,
-    pub failed: i32,
+    pub min: u16,
+    pub avg: u16,
+    pub fail: u8,
 }
 
 #[derive(Serialize, Deserialize)]
