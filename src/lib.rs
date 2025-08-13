@@ -180,8 +180,8 @@ pub async fn ping(
     let mut line_count = 0;
     for line in stdout.lines() {
         if let Some(caps) = time_regex.captures(line) {
-            if let Ok(time) = caps[1].parse::<u16>() {
-                ping_times.push(time);
+            if let Ok(time) = caps[1].parse::<f32>() {
+                ping_times.push(time as u16);
                 ping_success += 1;
             }
         }
