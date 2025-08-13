@@ -17,6 +17,7 @@ pub struct BimClient {
     pub server_url: String,
     pub machine_id: i32,
     pub client: reqwest::Client,
+    pub semaphore: Arc<Semaphore>,
 }
 
 impl BimClient {
@@ -48,12 +49,15 @@ impl BimClient {
         let machine_id = m.id;
         info!("Machine id: {machine_id}");
 
+        let semaphore = Arc::new(Semaphore::new(1));
+
         Ok(Self {
             name,
             token,
             server_url,
             machine_id,
             client,
+            semaphore,
         })
     }
 
@@ -81,6 +85,15 @@ impl BimClient {
     }
 
     pub async fn post_target_data(&self, target_id: i32, data: PingData) {
+        let permit = match self.semaphore.acquire().await {
+            Ok(p) => p,
+            _ => {
+                debug!("CC Acquire semaphore failed");
+
+                return;
+            }
+        };
+
         let url = format!(
             "{}/api/client/machines/{}/targets/{}",
             self.server_url, self.machine_id, target_id
@@ -90,7 +103,7 @@ impl BimClient {
             .client
             .post(&url)
             .bearer_auth(&self.token)
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(10))
             .json(&data)
             .send()
             .await
@@ -101,6 +114,8 @@ impl BimClient {
                 return;
             }
         };
+
+        drop(permit);
 
         debug!("Status code: {}", r.status());
         match r.json::<Message>().await {
