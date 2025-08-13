@@ -208,5 +208,5 @@ pub async fn ping(
         fail: ping_fail,
     };
 
-    cc.post_target_data(target_id, data).await
+    cc.post_target_data(target_id, data).await;
 }
