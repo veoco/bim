@@ -7,7 +7,7 @@ use log::{debug, info};
 use tokio::sync::Semaphore;
 use tokio::time;
 
-use bim::{ping, BimClient};
+use bim::{BimClient, ping};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -71,7 +71,7 @@ fn main() {
 #[tokio::main]
 async fn run(name: String, token: String, server_url: String) {
     let mut interval = time::interval(Duration::from_secs(300));
-    let semaphore = Arc::new(Semaphore::new(8));
+    let semaphore = Arc::new(Semaphore::new(64));
 
     loop {
         info!("Waiting for next tick");
