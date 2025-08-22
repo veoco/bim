@@ -1,16 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct MachineData {
-    pub name: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Machine {
-    pub id: i32,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct Target {
     pub id: i32,
     pub name: String,

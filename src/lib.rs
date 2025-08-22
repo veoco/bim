@@ -7,55 +7,29 @@ use regex::Regex;
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 
-pub use models::{Machine, MachineData, Message, PingData, Target};
+pub use models::{Message, PingData, Target};
 
 use log::{debug, info};
 
 pub struct BimClient {
-    pub name: String,
+    pub mid: i32,
     pub token: String,
     pub server_url: String,
-    pub machine_id: i32,
     pub client: reqwest::Client,
     pub semaphore: Arc<Semaphore>,
 }
 
 impl BimClient {
-    pub async fn new(name: String, token: String, server_url: String) -> Result<Self, String> {
+    pub async fn new(mid: i32, token: String, server_url: String) -> Result<Self, String> {
         let client = reqwest::Client::new();
-
-        let data = MachineData {
-            name: name.to_string(),
-        };
-        let url = format!("{server_url}/api/client/machines/");
-        debug!("Url: {url}");
-
-        let r = client
-            .post(url)
-            .bearer_auth(&token)
-            .timeout(Duration::from_secs(5))
-            .json(&data)
-            .send()
-            .await
-            .map_err(|_| "Network error")?;
-
-        debug!("Status code: {}", r.status());
-        if r.status() != 201 {
-            debug!("Content: {:?}", r.text().await);
-            return Err("Invalid name or token".to_string());
-        }
-
-        let m = r.json::<Machine>().await.map_err(|_| "Upgrade required")?;
-        let machine_id = m.id;
-        info!("Machine id: {machine_id}");
-
         let semaphore = Arc::new(Semaphore::new(1));
 
+        let token = format!("{}:{}", mid, token);
+
         Ok(Self {
-            name,
+            mid,
             token,
             server_url,
-            machine_id,
             client,
             semaphore,
         })
@@ -67,14 +41,14 @@ impl BimClient {
             .client
             .get(&url)
             .bearer_auth(&self.token)
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(10))
             .send()
             .await
             .map_err(|_| "Network error")?;
 
         debug!("Status code: {}", r.status());
         if r.status() != 200 {
-            return Err("Invalid name or token".to_string());
+            return Err("Invalid mid or token".to_string());
         }
 
         let targets = r
@@ -94,10 +68,7 @@ impl BimClient {
             }
         };
 
-        let url = format!(
-            "{}/api/client/machines/{}/targets/{}",
-            self.server_url, self.machine_id, target_id
-        );
+        let url = format!("{}/api/client/targets/{}", self.server_url, target_id);
 
         let r = match self
             .client
@@ -148,17 +119,9 @@ pub async fn ping(
     };
 
     let (net_arg, count_arg) = if cfg!(target_os = "windows") {
-        if ipv6 {
-            ("-6", "-n")
-        } else {
-            ("-4", "-n")
-        }
+        if ipv6 { ("-6", "-n") } else { ("-4", "-n") }
     } else {
-        if ipv6 {
-            ("-6", "-c")
-        } else {
-            ("-4", "-c")
-        }
+        if ipv6 { ("-6", "-c") } else { ("-4", "-c") }
     };
 
     let output = Command::new("ping")

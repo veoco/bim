@@ -19,7 +19,7 @@ fn main() {
     let program = args[0].clone();
 
     let mut opts = Options::new();
-    opts.optopt("n", "name", "set test client name", "NAME");
+    opts.optopt("m", "mid", "set test client machine id", "MACHINE_ID");
     opts.optopt("t", "token", "set the token", "TOKEN");
     opts.optopt("s", "server_url", "set the server URL", "SERVER_URL");
     opts.optflag("h", "help", "print this help menu");
@@ -37,8 +37,15 @@ fn main() {
         return;
     }
 
-    let name = match matches.opt_str("n") {
-        Some(name) => name,
+    let mid = match matches.opt_str("m") {
+        Some(mid) => {
+            if let Ok(m) = mid.parse::<i32>() {
+                m
+            } else {
+                print!("Invalid ID: {}\n", mid);
+                return;
+            }
+        }
         None => {
             print_usage(&program, opts);
             return;
@@ -63,13 +70,13 @@ fn main() {
 
     env_logger::init();
     debug!("API Token: {token}");
-    info!("Running Machine: {name}");
+    info!("Running Machine: {mid}");
 
-    run(name, token, server_url);
+    run(mid, token, server_url);
 }
 
 #[tokio::main]
-async fn run(name: String, token: String, server_url: String) {
+async fn run(mid: i32, token: String, server_url: String) {
     let mut interval = time::interval(Duration::from_secs(300));
     let semaphore = Arc::new(Semaphore::new(64));
 
@@ -77,7 +84,7 @@ async fn run(name: String, token: String, server_url: String) {
         info!("Waiting for next tick");
         interval.tick().await;
 
-        let c = match BimClient::new(name.clone(), token.clone(), server_url.clone()).await {
+        let c = match BimClient::new(mid, token.clone(), server_url.clone()).await {
             Ok(c) => Arc::new(c),
             Err(e) => {
                 info!("Connect failed: {e}");
