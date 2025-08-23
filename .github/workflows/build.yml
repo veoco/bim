@@ -1,14 +1,15 @@
 name: Build
-on: push
+
+on:
+  push:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
 
 jobs:
   build-linux:
     runs-on: ubuntu-latest
-    env:
-      RUST_BACKTRACE: full
     
     strategy:
       matrix:
@@ -17,38 +18,31 @@ jobs:
           - aarch64-unknown-linux-musl
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          target: ${{ matrix.target }}
           toolchain: nightly
-          default: true
-          override: true
-      
+          target: ${{ matrix.target }}
+
       - name: Install cross
         run: cargo install cross
 
       - name: Build ${{ matrix.target }}
         timeout-minutes: 15
         run: |
-          mkdir -p ./build/release
-          cross build --target ${{ matrix.target }} -r
-          cp ./target/${{ matrix.target }}/release/bim ./build/release/bim-${{ matrix.target }}
+          mkdir -p build/release
+          cross build --target ${{ matrix.target }} --release
+          cp target/${{ matrix.target }}/release/bim build/release/bim
       
-      - name: UPX
+      - name: UPX Compress
         uses: crazy-max/ghaction-upx@v2
         with:
           version: latest
           files: |
-            ./build/release/bim-${{ matrix.target }}
+            build/release/bim
           args: --best --lzma
-      
-      - name: sha256
-        run: |
-          cd ./build/release
-          shasum -a 256 bim-${{ matrix.target }} > bim-${{ matrix.target }}.sha256
     
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -58,62 +52,48 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-    env:
-      RUST_BACKTRACE: full
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: nightly
-          default: true
-          override: true
 
       - name: Build
         timeout-minutes: 15
         run: |
-          cargo build -r
-          mkdir -p ./build/release
-          cp ./target/release/bim.exe ./build/release/bim.exe
-          cd ./build/release
-          Get-FileHash bim.exe | Format-List > bim.exe.sha256
+          cargo build --release
+          mkdir build\release
+          copy target\release\bim.exe build\release\bim.exe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bim-win
+          name: bim-windows
           path: build/release/*
-    
+
   build-macos:
     runs-on: macos-latest
-    env:
-      RUST_BACKTRACE: full
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: nightly
-          default: true
-          override: true
 
       - name: Build
-        timeout-minutes: 120
+        timeout-minutes: 15
         run: |
-          cargo build -r
-          mkdir -p ./build/release
-          cp ./target/release/bim ./build/release/bim-macos
-          cd ./build/release
-          shasum -a 256 bim-macos > bim-macos.sha256
+          cargo build --release
+          mkdir -p build/release
+          cp target/release/bim build/release/bim
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bim-mac
+          name: bim-macos
           path: build/release/*
